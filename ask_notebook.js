@@ -19,9 +19,21 @@ const os = require('os');
 const args = process.argv.slice(2);
 const command = args[0] ? args[0].toLowerCase() : '';
 
-const userHome = process.env.USERPROFILE || process.env.HOME || os.homedir();
-const libraryPath = path.join(userHome, 'AppData', 'Local', 'notebooklm-mcp', 'Data', 'library.json');
-const sessionFilePath = path.join(userHome, 'AppData', 'Local', 'notebooklm-mcp', 'Data', 'terminal_sessions.json');
+function getMcpDataDir() {
+  const home = os.homedir();
+  switch (process.platform) {
+    case 'win32':
+      return path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'notebooklm-mcp', 'Data');
+    case 'darwin':
+      return path.join(home, 'Library', 'Application Support', 'notebooklm-mcp', 'Data');
+    default:
+      return path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'notebooklm-mcp', 'Data');
+  }
+}
+
+const dataDir = getMcpDataDir();
+const libraryPath = path.join(dataDir, 'library.json');
+const sessionFilePath = path.join(dataDir, 'terminal_sessions.json');
 
 function saveSessions(sessions) {
   try {
