@@ -94,9 +94,27 @@ note "Qual é a arquitetura do projeto?"
 
 ## Integração com IA
 
+Este projeto inclui arquivos de instruções para os principais assistentes de IA. Quando você clona o repo e abre com seu assistente, ele já sabe o que é o projeto e como instalar — sem precisar explicar nada.
+
+| Assistente | Arquivo lido automaticamente |
+|------------|------------------------------|
+| Claude Code | `CLAUDE.md` |
+| Antigravity (agy) | `guia_antigravity.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
+| Cursor | `.cursorrules` |
+| Outros agentes | `AGENTS.md` |
+
+### Instalar via IA (recomendado)
+
+Clone o repo, abra com seu assistente e diga apenas:
+
+> *"Instala isso aqui."*
+
+O assistente lê as instruções, roda o instalador, e te guia pelo login do Google.
+
 ### Claude Code (MCP)
 
-Adicione ao seu `.claude/settings.json` ou `claude_desktop_config.json`:
+Para integrar o NotebookLM diretamente nas ferramentas do Claude, adicione ao seu `.claude/settings.json`:
 
 ```json
 {
@@ -109,12 +127,12 @@ Adicione ao seu `.claude/settings.json` ou `claude_desktop_config.json`:
 }
 ```
 
-Depois você pode pedir ao Claude:
+Depois você pode pedir ao Claude diretamente no chat:
 > *"Consulte o notebook sobre o sistema de pagamentos e explique como funciona o retry."*
 
 ### Antigravity CLI (agy)
 
-Configure como ferramenta de terminal — o agente pode rodar `note "pergunta"` automaticamente quando precisar de contexto do seu projeto.
+O agente pode rodar `note "pergunta"` automaticamente sempre que precisar de contexto do seu projeto. Consulte o [`guia_antigravity.md`](guia_antigravity.md) para detalhes.
 
 ---
 
