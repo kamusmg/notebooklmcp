@@ -1,0 +1,13 @@
+{
+  "mcp_servers": {
+    "notebooklmcp_v2": {
+      "command": "python",
+      "args": ["src/server.py"],
+      "env_file": ".env",
+      "features": {
+        "proactive_setup": true,
+        "zero_token_rag": true
+      }
+    }
+  }
+}
