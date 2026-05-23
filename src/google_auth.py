@@ -47,8 +47,19 @@ def format_cookie_header(cookies: dict[str, str]) -> str:
     """Formats the cookies dictionary into a single Cookie header string."""
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
 
+def parse_cookies_string(cookie_header: str) -> dict[str, str]:
+    cookies = {}
+    for item in cookie_header.split(";"):
+        if "=" in item:
+            k, v = item.split("=", 1)
+            cookies[k.strip()] = v.strip()
+    return cookies
+
 def create_http_client(cookie_header: str) -> httpx.AsyncClient:
     """Creates a configured httpx.AsyncClient with security-bypass headers."""
+    import base64
+    import json
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
@@ -60,10 +71,28 @@ def create_http_client(cookie_header: str) -> httpx.AsyncClient:
         "X-Same-Domain": "1",  # Crucial bypass header for Google RPC
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-        "Cookie": cookie_header
+        "Sec-Fetch-Site": "same-origin"
     }
-    return httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True)
+    client = httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True)
+
+    # First try to load full cookies with domains and paths (preserves subdomains mapping)
+    cookies_b64 = os.getenv("GOOGLE_COOKIES_B64")
+    if cookies_b64:
+        try:
+            cookies_json = base64.b64decode(cookies_b64.encode('utf-8')).decode('utf-8')
+            cookies_list = json.loads(cookies_json)
+            for c in cookies_list:
+                domain = c.get("domain", "")
+                client.cookies.set(c["name"], c["value"], domain=domain, path=c.get("path", "/"))
+            return client
+        except Exception as e:
+            logger.error(f"Failed to load GOOGLE_COOKIES_B64: {e}")
+
+    # Fallback to standard cookie parsing
+    cookies_dict = parse_cookies_string(cookie_header)
+    for k, v in cookies_dict.items():
+        client.cookies.set(k, v, domain=".google.com")
+    return client
 
 async def refresh_at_and_bl(client: httpx.AsyncClient) -> Tuple[str, str]:
     """Scrapes notebooklm.google.com to extract the CSRF ('at') token and build label ('bl')."""
