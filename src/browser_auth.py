@@ -175,12 +175,16 @@ async def run_browser_login() -> dict:
         missing = [k for k in required_keys if k not in extracted]
         logger.warning(f"Alguns cookies necessários estão ausentes: {missing}")
 
+    # Compile the complete cookie string containing all cookies (guarantees authentication success)
+    all_cookies_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+
     # Write cookies directly to the .env file in the workspace
     env_content = f"""# Autenticação Google Pro (Bypass de Login/Playwright)
 GOOGLE_SID="{extracted.get('SID', '')}"
 GOOGLE_HSID="{extracted.get('HSID', '')}"
 GOOGLE_SSID="{extracted.get('SSID', '')}"
 GOOGLE_3PAPISID="{extracted.get('__Secure-3PAPISID', '')}"
+GOOGLE_COOKIES="{all_cookies_str}"
 
 # Configurações do seu Ambiente Antigravity
 ANTIGRAVITY_PROJECT_MODE="PROACTIVE"

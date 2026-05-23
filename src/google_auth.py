@@ -16,6 +16,15 @@ class AuthTokens(TypedDict):
 
 def get_google_cookies() -> dict[str, str]:
     """Retrieves Google auth cookies from environment variables."""
+    raw_cookies = os.getenv("GOOGLE_COOKIES")
+    if raw_cookies:
+        cookies = {}
+        for item in raw_cookies.split(";"):
+            if "=" in item:
+                k, v = item.split("=", 1)
+                cookies[k.strip()] = v.strip()
+        return cookies
+
     sid = os.getenv("GOOGLE_SID")
     hsid = os.getenv("GOOGLE_HSID")
     ssid = os.getenv("GOOGLE_SSID")
