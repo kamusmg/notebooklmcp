@@ -229,7 +229,9 @@ class NotebookLMClient:
             
         res = self._parse_batch_response(response.text)
         if res and isinstance(res, list) and len(res) > 0:
-            task_id = res[0]
+            # For Deep Research (QA9ei), Google returns a list like [plan_id, task_id]
+            # where task_id is the primary key used in the research list (e3bVqc)
+            task_id = res[1] if (mode_lower == "deep" and len(res) > 1) else res[0]
             report_id = res[1] if len(res) > 1 else None
             return {
                 "task_id": task_id,
@@ -301,6 +303,11 @@ class NotebookLMClient:
                         source_report = src[1][1]
                     elif isinstance(src[1], str):
                         title = src[1]
+                        # Look for report markdown text (usually in src[6][0] or src[6])
+                        if len(src) > 6 and isinstance(src[6], list) and src[6]:
+                            source_report = src[6][0]
+                        elif len(src) > 6 and isinstance(src[6], str):
+                            source_report = src[6]
                 else:
                     url_str = src[0] if isinstance(src[0], str) else ""
                     title = src[1] if len(src) > 1 and isinstance(src[1], str) else ""

@@ -73,7 +73,7 @@ def create_http_client(cookie_header: str) -> httpx.AsyncClient:
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin"
     }
-    client = httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True)
+    client = httpx.AsyncClient(headers=headers, timeout=120.0, follow_redirects=True)
 
     # First try to load full cookies with domains and paths (preserves subdomains mapping)
     cookies_b64 = os.getenv("GOOGLE_COOKIES_B64")
