@@ -60,6 +60,14 @@ async def get_pages() -> list:
         pass
     return []
 
+async def has_logged_in_cookies(ws_url: str) -> bool:
+    """Helper to check if active session cookies are present on the target page."""
+    try:
+        cookies_list = await extract_cookies_via_cdp(ws_url)
+        return any(c.get("name") == "SID" for c in cookies_list)
+    except Exception:
+        return False
+
 async def wait_for_login(max_wait_seconds: int = 300) -> Optional[str]:
     """Poll open pages until user logs in and reaches the main NotebookLM page."""
     start_time = time.time()
@@ -75,14 +83,16 @@ async def wait_for_login(max_wait_seconds: int = 300) -> Optional[str]:
             
             # Detect successful navigation to NotebookLM dashboard (excluding signin/accounts/login pages)
             if "notebooklm.google.com" in url and "notebooklm.google.com/login" not in url and "accounts.google.com" not in url and "signin" not in url and ws_url:
-                logger.info("Login detectado com sucesso!")
-                print("✅ Login detectado com sucesso!", file=sys.stderr)
-                return ws_url
+                # Ensure the user has actually logged in (SID cookie exists) to avoid Chrome startup race conditions
+                if await has_logged_in_cookies(ws_url):
+                    logger.info("Login detectado com sucesso!")
+                    print("✅ Login detectado com sucesso!", file=sys.stderr)
+                    return ws_url
                 
         await asyncio.sleep(2)
     return None
 
-async def extract_cookies_via_cdp(ws_url: str) -> dict[str, str]:
+async def extract_cookies_via_cdp(ws_url: str) -> list[dict]:
     """Connect to page WebSocket and request all cookies via Chrome DevTools Protocol."""
     logger.info("Conectando ao WebSocket do Chrome...")
     async with websockets.connect(ws_url) as ws:
@@ -102,14 +112,14 @@ async def extract_cookies_via_cdp(ws_url: str) -> dict[str, str]:
         response = await ws.recv()
         res_data = json.loads(response)
 
-        cookies = {}
+        cookies_list = []
         if "result" in res_data and "cookies" in res_data["result"]:
             for c in res_data["result"]["cookies"]:
                 domain = c.get("domain", "")
                 if "google.com" in domain or "notebooklm" in domain:
-                    cookies[c["name"]] = c["value"]
+                    cookies_list.append(c)
 
-        return cookies
+        return cookies_list
 
 async def run_browser_login() -> dict:
     """Main orchestration for Chrome remote debugging and cookie extraction."""
@@ -163,20 +173,26 @@ async def run_browser_login() -> dict:
 
     # Extract cookies
     print("🍪 Extraindo cookies da sessão...", file=sys.stderr)
-    cookies = await extract_cookies_via_cdp(ws_url)
+    cookies_list = await extract_cookies_via_cdp(ws_url)
 
     required_keys = ["SID", "HSID", "SSID", "__Secure-3PAPISID"]
     extracted = {}
-    for key in required_keys:
-        if key in cookies:
-            extracted[key] = cookies[key]
+    for c in cookies_list:
+        name = c.get("name")
+        if name in required_keys:
+            extracted[name] = c.get("value")
 
     if len(extracted) < len(required_keys):
         missing = [k for k in required_keys if k not in extracted]
         logger.warning(f"Alguns cookies necessários estão ausentes: {missing}")
 
-    # Compile the complete cookie string containing all cookies (guarantees authentication success)
-    all_cookies_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    # Compile a standard cookie header string for backward compatibility
+    all_cookies_str = "; ".join(f"{c.get('name')}={c.get('value')}" for c in cookies_list)
+
+    # Base64 encode the complete JSON representation of cookies (preserves all domain metadata)
+    import base64
+    cookies_json = json.dumps(cookies_list)
+    cookies_b64 = base64.b64encode(cookies_json.encode('utf-8')).decode('utf-8')
 
     # Write cookies directly to the .env file in the workspace
     env_content = f"""# Autenticação Google Pro (Bypass de Login/Playwright)
@@ -185,6 +201,7 @@ GOOGLE_HSID="{extracted.get('HSID', '')}"
 GOOGLE_SSID="{extracted.get('SSID', '')}"
 GOOGLE_3PAPISID="{extracted.get('__Secure-3PAPISID', '')}"
 GOOGLE_COOKIES="{all_cookies_str}"
+GOOGLE_COOKIES_B64="{cookies_b64}"
 
 # Configurações do seu Ambiente Antigravity
 ANTIGRAVITY_PROJECT_MODE="PROACTIVE"
