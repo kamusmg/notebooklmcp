@@ -22,6 +22,9 @@ Servidor MCP em Python para consultar o Google NotebookLM direto de ambientes de
 2. `deep_query`
    - Parâmetros: `notebook_id` (str), `question` (str)
    - Ação: Encaminha uma pergunta diretamente ao chat interno do NotebookLM e retorna a resposta grounded.
+3. `authenticate`
+   - Parâmetros: `method` (str, padrão: "browser")
+   - Ação: Abre o navegador Chrome com depuração remota habilitada para que o usuário faça login na conta Google Pro e, após o login, extrai automaticamente os cookies salvando-os no arquivo `.env`.
 
 ---
 

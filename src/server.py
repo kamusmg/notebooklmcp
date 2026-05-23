@@ -114,6 +114,34 @@ async def deep_query(notebook_id: str, question: str) -> Dict[str, Any]:
             "message": str(e)
         }
 
+@mcp.tool()
+async def authenticate(method: str = "browser") -> Dict[str, Any]:
+    """
+    Triggers Google Chrome to open and allows the user to log in manually.
+    Once login is complete, automatically extracts the session cookies and writes them to the local '.env' file.
+
+    Parameters:
+    - method: Authentication method (currently only 'browser' is supported).
+    """
+    if method != "browser":
+        return {
+            "status": "error",
+            "message": "Only 'browser' method is supported."
+        }
+    try:
+        from src.browser_auth import run_browser_login
+        await run_browser_login()
+        return {
+            "status": "success",
+            "message": "Cookies extracted and saved successfully to .env."
+        }
+    except Exception as e:
+        logger.error(f"Authentication failed: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 if __name__ == "__main__":
     # Default behavior: run stdio transport for MCP integration
     mcp.run(transport="stdio")
