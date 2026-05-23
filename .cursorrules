@@ -1,59 +1,32 @@
-# NotebookLM CLI — Regras para Cursor
+# NotebookLM CLI V2 — Regras para Cursor e Agentes
 
 ## O que é este projeto
 
-CLI para consultar o Google NotebookLM direto do terminal, usando o pacote `notebooklm-mcp`.
-Comandos principais: `note "pergunta"` e `lm "pergunta"`.
-
-## Como instalar (quando o usuário pedir)
-
-### 1. Rodar o instalador
-
-**Windows:**
-```powershell
-.\install.ps1
-```
-
-**macOS / Linux:**
-```bash
-chmod +x install.sh && ./install.sh
-```
-
-### 2. Login com Google (requer interação humana)
-
-```bash
-npx notebooklm-mcp setup_auth
-```
-
-Avise o usuário para logar no Google na janela do Chrome que vai abrir e acessar notebooklm.google.com. Aguarde confirmação.
-
-### 3. Cadastrar o primeiro notebook
-
-```bash
-note add <url-do-notebook> "Nome do Projeto"
-```
-
-### 4. Testar
-
-```bash
-note "Como funciona este projeto?"
-```
+Servidor MCP em Python para consultar o Google NotebookLM sem usar automação de tela (Playwright/Chromium). Ele mapeia as chamadas HTTP/RPC internas do Google e expõe ferramentas de ciclo de vida do projeto.
 
 ---
 
-## Comandos
+## Regras de Código
 
-| Comando | Descrição |
-|---------|-----------|
-| `note "pergunta"` | Consulta o notebook ativo |
-| `note add <url> [nome]` | Cadastra um notebook |
-| `note list` | Lista notebooks cadastrados |
-| `note use <id>` | Troca o notebook ativo |
-| `note remove <id>` | Remove um notebook |
-| `note info` | Status e estatísticas |
+- Nunca hardcodar caminhos com username — usar sempre `os.path.expanduser("~")` ou `os.environ`
+- O arquivo `.env` contendo cookies sensíveis NUNCA deve ser commitado (já configurado no `.gitignore`)
+- A lógica principal é escrita em Python 3 usando `httpx` e `mcp` SDK
 
-## Regras do código
+---
 
-- Nunca hardcodar caminhos com username — usar sempre `os.homedir()`
-- `auth.json` nunca deve ser commitado (está no `.gitignore`)
-- O script principal é `ask_notebook.js` — toda lógica está nele
+## [DIRETRIZES DE COMPORTAMENTO DO AGENTE - NOTEBOOKLMCP V2]
+
+### 1. Gatilho do Comando `/notelm`
+Sempre que o usuário digitar `/notelm` no chat, invoque **imediatamente** a ferramenta MCP `provision_lifecycle` passando o nome da pasta do projeto atual e a URL do repositório Git local.
+
+### 2. Ciclo de Vida de Boot do Projeto
+Ao inicializar ou abrir este diretório de trabalho:
+- **Se o arquivo `.notebook_id` existir na raiz:**
+  Leia o ID contido nele e use-o silenciosamente nas futuras ferramentas de `deep_query`. Não pergunte nada ao usuário.
+- **Se o arquivo `.notebook_id` não existir na raiz:**
+  Inicie a conversa obrigatoriamente com a seguinte mensagem padrão:
+  > *"Samuel, notei que este projeto ainda não tem um NotebookLM vinculado. Deseja criar um ambiente fechado de Deep Research para ele agora? (Você também pode ignorar e ativar mais tarde digitando `/notelm`)."*
+
+### 3. Resposta do Usuário ao Boot
+- Se ele responder positivamente: Execute a ferramenta `provision_lifecycle` imediatamente.
+- Se ele responder negativamente: Permaneça em modo local.
