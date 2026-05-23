@@ -1,7 +1,8 @@
 import json
 import logging
+import os
 import urllib.parse
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 import httpx
 from src.google_auth import create_http_client
 
@@ -201,6 +202,363 @@ class NotebookLMClient:
             return "No answer received from Google NotebookLM.", server_conv_id
 
         return answer, server_conv_id
+
+    async def start_research(self, notebook_id: str, query: str, mode: str = "deep") -> dict:
+        """Starts a web research session (fast: Ljjv0c | deep: QA9ei)."""
+        mode_lower = mode.lower()
+        if mode_lower not in ("fast", "deep"):
+            raise ValueError("mode must be either 'fast' or 'deep'")
+        
+        # 1 = Web, 2 = Drive (we use Web)
+        source_type = 1
+        
+        if mode_lower == "fast":
+            rpc_id = "Ljjv0c"
+            params = [[query, source_type], None, 1, notebook_id]
+        else:
+            rpc_id = "QA9ei"
+            params = [None, [1], [query, source_type], 5, notebook_id]
+            
+        url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
+        body = self._build_batch_body(rpc_id, params)
+        
+        logger.info(f"Starting {mode_lower} research on notebook {notebook_id} with query: '{query}'")
+        response = await self.client.post(url, content=body)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to start research. HTTP {response.status_code}")
+            
+        res = self._parse_batch_response(response.text)
+        if res and isinstance(res, list) and len(res) > 0:
+            task_id = res[0]
+            report_id = res[1] if len(res) > 1 else None
+            return {
+                "task_id": task_id,
+                "report_id": report_id,
+                "status": "in_progress"
+            }
+            
+        raise ValueError(f"Unexpected response when starting research: {response.text[:500]}")
+
+    async def poll_research(self, notebook_id: str, task_id: str) -> dict:
+        """Polls the status of research tasks in the notebook."""
+        rpc_id = "e3bVqc"
+        params = [None, None, notebook_id]
+        url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
+        body = self._build_batch_body(rpc_id, params)
+        
+        response = await self.client.post(url, content=body)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to poll research. HTTP {response.status_code}")
+            
+        res = self._parse_batch_response(response.text)
+        if not res or not isinstance(res, list) or len(res) == 0:
+            return {"status": "no_research", "sources": []}
+            
+        # Unwrap nested lists if Google returns [[[task_data, ...]]]
+        if isinstance(res[0], list) and len(res[0]) > 0 and isinstance(res[0][0], list):
+            res = res[0]
+            
+        for task_data in res:
+            if not isinstance(task_data, list) or len(task_data) == 0:
+                continue
+                
+            curr_task_id = task_data[0]
+            if curr_task_id != task_id:
+                continue
+                
+            task_info = task_data[1] if len(task_data) > 1 else None
+            if not task_info or not isinstance(task_info, list):
+                continue
+                
+            query_text = task_info[1][0] if len(task_info) > 1 and isinstance(task_info[1], list) and task_info[1] else ""
+            status_code = task_info[4] if len(task_info) > 4 else None
+            
+            # Research status codes: 1 = in_progress, 2 or 6 = completed, others = failed
+            if status_code in (2, 6):
+                status = "completed"
+            elif status_code == 1 or status_code is None:
+                status = "in_progress"
+            else:
+                status = "failed"
+                
+            sources_bundle = task_info[3] if len(task_info) > 3 else None
+            sources_data = sources_bundle[0] if isinstance(sources_bundle, list) and sources_bundle else []
+            
+            parsed_sources = []
+            report = ""
+            
+            for src in sources_data:
+                if not isinstance(src, list) or len(src) < 2:
+                    continue
+                title = ""
+                url_str = ""
+                source_report = ""
+                
+                # Check if it is a report/text block (src[0] is None)
+                if src[0] is None and len(src) > 1:
+                    if isinstance(src[1], list) and len(src[1]) >= 2:
+                        title = src[1][0]
+                        source_report = src[1][1]
+                    elif isinstance(src[1], str):
+                        title = src[1]
+                else:
+                    url_str = src[0] if isinstance(src[0], str) else ""
+                    title = src[1] if len(src) > 1 and isinstance(src[1], str) else ""
+                    
+                if title or url_str:
+                    s = {
+                        "url": url_str,
+                        "title": title,
+                        "research_task_id": curr_task_id
+                    }
+                    if source_report:
+                        s["report_markdown"] = source_report
+                        report = source_report
+                    parsed_sources.append(s)
+            
+            return {
+                "task_id": curr_task_id,
+                "status": status,
+                "query": query_text,
+                "sources": parsed_sources,
+                "report": report
+            }
+            
+        return {"status": "not_found", "sources": []}
+
+    async def import_research_sources(self, notebook_id: str, task_id: str, sources: list) -> list:
+        """Imports research sources (web links or reports) into the notebook."""
+        rpc_id = "LBwxtb"
+        source_array = []
+        
+        for src in sources:
+            if src.get("report_markdown"):
+                # Report entry: type 3
+                source_array.append([None, [src["title"], src["report_markdown"]], None, 3, None, None, None, None, None, None, 3])
+            elif src.get("url"):
+                # Web entry: type 2
+                source_array.append([None, None, [src["url"], src.get("title", "Untitled")], None, None, None, None, None, None, None, 2])
+                
+        if not source_array:
+            return []
+            
+        params = [None, [1], task_id, notebook_id, source_array]
+        url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
+        body = self._build_batch_body(rpc_id, params)
+        
+        logger.info(f"Importing {len(source_array)} sources for task {task_id} in notebook {notebook_id}")
+        response = await self.client.post(url, content=body)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to import sources. HTTP {response.status_code}")
+            
+        res = self._parse_batch_response(response.text)
+        imported = []
+        if res and isinstance(res, list):
+            if len(res) > 0 and isinstance(res[0], list) and len(res[0]) > 0 and isinstance(res[0][0], list):
+                res = res[0]
+            for src_data in res:
+                if isinstance(src_data, list) and len(src_data) >= 2:
+                    src_id = src_data[0][0] if src_data[0] and isinstance(src_data[0], list) else None
+                    if src_id:
+                        imported.append({"id": src_id, "title": src_data[1]})
+        return imported
+
+    async def get_source_ids(self, notebook_id: str) -> list:
+        """Gets all source IDs currently linked to a notebook."""
+        rpc_id = "rLM1Ne" # GET_NOTEBOOK
+        params = [notebook_id, None, [2], None, 0]
+        url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
+        body = self._build_batch_body(rpc_id, params)
+        
+        response = await self.client.post(url, content=body)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to get notebook. HTTP {response.status_code}")
+            
+        res = self._parse_batch_response(response.text)
+        source_ids = []
+        if res and isinstance(res, list) and len(res) > 0:
+            nb_info = res[0]
+            if isinstance(nb_info, list) and len(nb_info) > 1 and isinstance(nb_info[1], list):
+                sources = nb_info[1]
+                for src in sources:
+                    if isinstance(src, list) and src:
+                        first = src[0]
+                        if isinstance(first, list) and first:
+                            sid = first[0]
+                            if isinstance(sid, str):
+                                source_ids.append(sid)
+        return source_ids
+
+    async def generate_studio_artifact(self, notebook_id: str, source_ids: list, artifact_type: str, custom_prompt: str = None) -> str:
+        """Generates a Studio artifact (Study Guide, Briefing Doc, Quiz, Slide Deck, etc.)"""
+        rpc_id = "R7cb6c" # CREATE_ARTIFACT
+        
+        # Nest source IDs: double = [[id, ...]], triple = [[[id, ...]]]
+        source_ids_double = [source_ids]
+        source_ids_triple = [[source_ids]]
+        
+        type_lower = artifact_type.lower()
+        
+        if type_lower == "study_guide":
+            type_code = 2
+            config = [
+                None,
+                [
+                    "Study Guide",
+                    "Short-answer quiz, essay questions, glossary",
+                    None,
+                    source_ids_double,
+                    "en",
+                    "Create a comprehensive study guide that includes key concepts, short-answer practice questions, essay prompts for deeper exploration, and a glossary of important terms." + (f"\n\nExtra instructions:\n{custom_prompt}" if custom_prompt else ""),
+                    None,
+                    True
+                ]
+            ]
+            params = [[2], notebook_id, [None, None, type_code, source_ids_triple, None, None, None, config]]
+            
+        elif type_lower == "briefing_doc":
+            type_code = 2
+            config = [
+                None,
+                [
+                    "Briefing Doc",
+                    "Key insights and important quotes",
+                    None,
+                    source_ids_double,
+                    "en",
+                    "Create a comprehensive briefing document that includes an Executive Summary, detailed analysis of key themes, important quotes with context, and actionable insights." + (f"\n\nExtra instructions:\n{custom_prompt}" if custom_prompt else ""),
+                    None,
+                    True
+                ]
+            ]
+            params = [[2], notebook_id, [None, None, type_code, source_ids_triple, None, None, None, config]]
+            
+        elif type_lower == "blog_post":
+            type_code = 2
+            config = [
+                None,
+                [
+                    "Blog Post",
+                    "Insightful takeaways in readable article format",
+                    None,
+                    source_ids_double,
+                    "en",
+                    "Write an engaging blog post that presents the key insights in an accessible, reader-friendly format. Include an attention-grabbing introduction, well-organized sections, and a compelling conclusion with takeaways." + (f"\n\nExtra instructions:\n{custom_prompt}" if custom_prompt else ""),
+                    None,
+                    True
+                ]
+            ]
+            params = [[2], notebook_id, [None, None, type_code, source_ids_triple, None, None, None, config]]
+            
+        elif type_lower == "quiz":
+            type_code = 4 # QUIZ_FLASHCARD
+            quiz_config = [
+                None,
+                [
+                    2, # variant = 2 (Quiz)
+                    None,
+                    custom_prompt or "",
+                    None,
+                    None,
+                    None,
+                    None,
+                    [2, 2] # quantity, difficulty
+                ]
+            ]
+            params = [[2], notebook_id, [None, None, type_code, source_ids_triple, None, None, None, None, None, quiz_config]]
+            
+        elif type_lower == "slide_deck":
+            type_code = 8
+            slide_config = [[custom_prompt or "", "en", 1, 1]]
+            artifact_block = [None, None, type_code, source_ids_triple] + [None]*12 + [slide_config]
+            params = [[2], notebook_id, artifact_block]
+            
+        elif type_lower == "data_table":
+            type_code = 9
+            table_config = [None, [custom_prompt or "", "en"]]
+            artifact_block = [None, None, type_code, source_ids_triple] + [None]*14 + [table_config]
+            params = [[2], notebook_id, artifact_block]
+            
+        else: # custom
+            type_code = 2
+            config = [
+                None,
+                [
+                    "Custom Report",
+                    "Custom format",
+                    None,
+                    source_ids_double,
+                    "en",
+                    custom_prompt or "Create a report based on the provided sources.",
+                    None,
+                    True
+                ]
+            ]
+            params = [[2], notebook_id, [None, None, type_code, source_ids_triple, None, None, None, config]]
+            
+        url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
+        body = self._build_batch_body(rpc_id, params)
+        
+        logger.info(f"Generating studio artifact '{type_lower}' for notebook {notebook_id}")
+        response = await self.client.post(url, content=body)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to generate artifact. HTTP {response.status_code}")
+            
+        res = self._parse_batch_response(response.text)
+        if res and isinstance(res, list) and len(res) > 0:
+            inner = res[0]
+            if isinstance(inner, list) and len(inner) > 0:
+                artifact_id = inner[0]
+                return str(artifact_id)
+                
+        raise ValueError(f"Unexpected response during artifact generation: {response.text[:500]}")
+
+    async def poll_studio_artifact(self, notebook_id: str, artifact_id: str) -> dict:
+        """Polls the status and fetches the content of a generated artifact."""
+        rpc_id = "gArtLc" # LIST_ARTIFACTS
+        params = [[2], notebook_id]
+        url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
+        body = self._build_batch_body(rpc_id, params)
+        
+        response = await self.client.post(url, content=body)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to list artifacts. HTTP {response.status_code}")
+            
+        res = self._parse_batch_response(response.text)
+        if not res or not isinstance(res, list):
+            return {"status": "not_found"}
+            
+        if len(res) == 1 and isinstance(res[0], list) and (not res[0] or isinstance(res[0][0], list)):
+            res = res[0]
+            
+        for art in res:
+            if isinstance(art, list) and len(art) > 0 and str(art[0]) == artifact_id:
+                status_code = art[4] if len(art) > 4 else 0
+                type_code = art[2] if len(art) > 2 else 0
+                title = art[1] if len(art) > 1 else ""
+                
+                # Status: 1=processing, 2=pending, 3=completed, 4=failed
+                if status_code == 3:
+                    status = "completed"
+                elif status_code in (1, 2):
+                    status = "in_progress"
+                else:
+                    status = "failed"
+                    
+                content = ""
+                # For reports/markdown artifacts (type=2), completed content is at index 5
+                if status == "completed" and type_code == 2:
+                    content = art[5] if len(art) > 5 and isinstance(art[5], str) else ""
+                    
+                return {
+                    "artifact_id": artifact_id,
+                    "title": title,
+                    "type_code": type_code,
+                    "status": status,
+                    "content": content
+                }
+                
+        return {"status": "not_found"}
 
     async def close(self):
         await self.client.aclose()

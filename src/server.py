@@ -142,6 +142,166 @@ async def authenticate(method: str = "browser") -> Dict[str, Any]:
             "message": str(e)
         }
 
+@mcp.tool()
+async def start_research(notebook_id: str, query: str, mode: str = "deep") -> Dict[str, Any]:
+    """
+    Starts an asynchronous web research session on the Google NotebookLM backend.
+    
+    Parameters:
+    - notebook_id: The ID of the NotebookLM notebook.
+    - query: The research query or topic to search on the web.
+    - mode: The research depth ('fast' for quick results, 'deep' for detailed analysis).
+    """
+    try:
+        client = await _get_authenticated_client()
+        result = await client.start_research(notebook_id, query, mode)
+        await client.close()
+        return {
+            "status": "success",
+            "data": result
+        }
+    except Exception as e:
+        logger.error(f"Error in start_research: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@mcp.tool()
+async def poll_research(notebook_id: str, task_id: str) -> Dict[str, Any]:
+    """
+    Checks the status of an active web research task in the notebook.
+    
+    Parameters:
+    - notebook_id: The ID of the NotebookLM notebook.
+    - task_id: The research task ID returned by start_research.
+    """
+    try:
+        client = await _get_authenticated_client()
+        result = await client.poll_research(notebook_id, task_id)
+        await client.close()
+        return {
+            "status": "success",
+            "data": result
+        }
+    except Exception as e:
+        logger.error(f"Error in poll_research: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@mcp.tool()
+async def import_research_sources(notebook_id: str, task_id: str, sources: list) -> Dict[str, Any]:
+    """
+    Imports the discovered web search results or reports into the notebook as permanent sources.
+    
+    Parameters:
+    - notebook_id: The ID of the NotebookLM notebook.
+    - task_id: The research task ID.
+    - sources: The list of source objects (containing 'url', 'title', and optionally 'report_markdown') to import.
+    """
+    try:
+        client = await _get_authenticated_client()
+        imported = await client.import_research_sources(notebook_id, task_id, sources)
+        await client.close()
+        return {
+            "status": "success",
+            "imported_sources": imported
+        }
+    except Exception as e:
+        logger.error(f"Error in import_research_sources: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@mcp.tool()
+async def get_notebook_sources(notebook_id: str) -> Dict[str, Any]:
+    """
+    Lists the IDs of all sources linked to a notebook.
+    
+    Parameters:
+    - notebook_id: The ID of the NotebookLM notebook.
+    """
+    try:
+        client = await _get_authenticated_client()
+        source_ids = await client.get_source_ids(notebook_id)
+        await client.close()
+        return {
+            "status": "success",
+            "source_ids": source_ids
+        }
+    except Exception as e:
+        logger.error(f"Error in get_notebook_sources: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@mcp.tool()
+async def generate_studio_artifact(notebook_id: str, artifact_type: str, custom_prompt: str = None) -> Dict[str, Any]:
+    """
+    Generates a Studio artifact (Study Guide, Briefing Doc, FAQ/Quiz, etc.) based on all linked notebook sources.
+    
+    Parameters:
+    - notebook_id: The ID of the NotebookLM notebook.
+    - artifact_type: Type of artifact to create ('study_guide', 'briefing_doc', 'blog_post', 'quiz', 'slide_deck', 'data_table', or 'custom').
+    - custom_prompt: Custom generation instructions or custom report template.
+    """
+    try:
+        client = await _get_authenticated_client()
+        
+        # 1. Fetch active source IDs from the notebook
+        source_ids = await client.get_source_ids(notebook_id)
+        if not source_ids:
+            await client.close()
+            return {
+                "status": "error",
+                "message": "Cannot generate artifact: The notebook has no sources. Please add or research sources first."
+            }
+            
+        # 2. Trigger the generation
+        artifact_id = await client.generate_studio_artifact(notebook_id, source_ids, artifact_type, custom_prompt)
+        await client.close()
+        
+        return {
+            "status": "success",
+            "artifact_id": artifact_id,
+            "message": f"Artifact generation for '{artifact_type}' successfully initiated."
+        }
+    except Exception as e:
+        logger.error(f"Error in generate_studio_artifact: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@mcp.tool()
+async def poll_studio_artifact(notebook_id: str, artifact_id: str) -> Dict[str, Any]:
+    """
+    Polls the status of an active Studio artifact generation task.
+    If the status is 'completed' and the artifact is a report/markdown, returns the contents.
+    
+    Parameters:
+    - notebook_id: The ID of the NotebookLM notebook.
+    - artifact_id: The artifact/task ID returned by generate_studio_artifact.
+    """
+    try:
+        client = await _get_authenticated_client()
+        result = await client.poll_studio_artifact(notebook_id, artifact_id)
+        await client.close()
+        return {
+            "status": "success",
+            "data": result
+        }
+    except Exception as e:
+        logger.error(f"Error in poll_studio_artifact: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 if __name__ == "__main__":
     # Default behavior: run stdio transport for MCP integration
     mcp.run(transport="stdio")

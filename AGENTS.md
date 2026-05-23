@@ -18,13 +18,31 @@ Servidor MCP em Python para consultar o Google NotebookLM direto de ambientes de
 
 1. `provision_lifecycle`
    - Parâmetros: `project_name` (str), `github_repo_url` (str)
-   - Ação: Cria um NotebookLM para o projeto atual e vincula o repositório Git como fonte principal. Persiste o ID do notebook gerado no arquivo `.notebook_id` na raiz do projeto.
+   - Ação: Cria um NotebookLM para o projeto atual e vincula o repositório Git como fonte principal.
 2. `deep_query`
    - Parâmetros: `notebook_id` (str), `question` (str)
-   - Ação: Encaminha uma pergunta diretamente ao chat interno do NotebookLM e retorna a resposta grounded.
+   - Ação: Faz uma pergunta direta no chat do NotebookLM e retorna a resposta.
 3. `authenticate`
    - Parâmetros: `method` (str, padrão: "browser")
-   - Ação: Abre o navegador Chrome com depuração remota habilitada para que o usuário faça login na conta Google Pro e, após o login, extrai automaticamente os cookies salvando-os no arquivo `.env`.
+   - Ação: Abre o Chrome para login manual e extrai automaticamente os cookies salvando no `.env`.
+4. `start_research`
+   - Parâmetros: `notebook_id` (str), `query` (str), `mode` (str)
+   - Ação: Inicia uma pesquisa web (Fast ou Deep) e retorna o `task_id`.
+5. `poll_research`
+   - Parâmetros: `notebook_id` (str), `task_id` (str)
+   - Ação: Monitora o status da pesquisa web ativa (retorna progresso, fontes e relatório).
+6. `import_research_sources`
+   - Parâmetros: `notebook_id` (str), `task_id` (str), `sources` (list)
+   - Ação: Importa fontes descobertas pela pesquisa como fontes permanentes do NotebookLM.
+7. `get_notebook_sources`
+   - Parâmetros: `notebook_id` (str)
+   - Ação: Retorna a lista de IDs de fontes ativos vinculados ao notebook.
+8. `generate_studio_artifact`
+   - Parâmetros: `notebook_id` (str), `artifact_type` (str), `custom_prompt` (str, opcional)
+   - Ação: Gera um entregável no Estúdio do NotebookLM (como Guia de Estudo, Resumo ou Quiz) com base em todas as fontes.
+9. `poll_studio_artifact`
+   - Parâmetros: `notebook_id` (str), `artifact_id` (str)
+   - Ação: Monitora o status de geração e retorna o conteúdo gerado (markdown, etc.).
 
 ---
 
@@ -36,7 +54,7 @@ Sempre que o usuário digitar `/notelm` no chat, invoque **imediatamente** a fer
 ### 2. Ciclo de Vida de Boot do Projeto
 Ao inicializar ou abrir este diretório de trabalho:
 - **Se o arquivo `.notebook_id` existir na raiz:**
-  Leia o ID contido nele e use-o silenciosamente nas futuras ferramentas de `deep_query`. Não pergunte nada ao usuário.
+  Leia o ID contido nele e use-o silenciosamente nas futuras consultas. Não pergunte nada ao usuário.
 - **Se o arquivo `.notebook_id` não existir na raiz:**
   Inicie a conversa obrigatoriamente com a seguinte mensagem padrão:
   > *"Samuel, notei que este projeto ainda não tem um NotebookLM vinculado. Deseja criar um ambiente fechado de Deep Research para ele agora? (Você também pode ignorar e ativar mais tarde digitando `/notelm`)."*
@@ -44,3 +62,9 @@ Ao inicializar ou abrir este diretório de trabalho:
 ### 3. Resposta do Usuário ao Boot
 - Se ele responder positivamente: Execute a ferramenta `provision_lifecycle` imediatamente.
 - Se ele responder negativamente: Permaneça em modo local.
+
+### 4. Proatividade e Comunicação de Pesquisa (IMPORTANTE)
+- **Aviso de Progresso no Chat**: Sempre que iniciar uma pesquisa web profunda (`start_research`) ou geração de artefatos do Estúdio, você deve explicar e manter o usuário atualizado no chat em tempo real a cada iteração de polling (ex: *"Samuel, estou iniciando uma pesquisa profunda sobre [tema] no NotebookLM para enriquecer o contexto do seu projeto..."*, *"Ainda pesquisando... encontrei 6 fontes web relevantes..."*, *"Pesquisa concluída! Relatório final gerado. Agora vou importar as fontes..."*).
+- **Proatividade de Deep Research**: Se o usuário te fizer perguntas sobre o código ou sobre bibliotecas externas que necessitam de buscas web atualizadas, e você perceber que o NotebookLM atual não possui fontes suficientes sobre esse assunto, ofereça-se proativamente para rodar uma pesquisa profunda (Deep Research) e salvá-la no notebook para uso futuro.
+- **Uso do Estúdio**: Sempre que o usuário solicitar resumos detalhados, questionários, mapas mentais ou guias de estudo do repositório, utilize a ferramenta `generate_studio_artifact` + `poll_studio_artifact` para gerar e trazer a versão estruturada do Estúdio do NotebookLM, apresentando o resultado final de forma muito polida no chat.
+- **Metáforas Amigáveis**: NUNCA exponha termos técnicos como "RPC", "batchexecute" ou "payload" nas mensagens do chat. Use termos humanos e amigáveis como "Pesquisa profunda na web", "Processando fontes", "Gerando Guia de Estudo no Estúdio", etc.

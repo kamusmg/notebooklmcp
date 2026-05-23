@@ -22,7 +22,7 @@ Sempre que o usuário digitar `/notelm` no chat, invoque **imediatamente** a fer
 ### 2. Ciclo de Vida de Boot do Projeto
 Ao inicializar ou abrir este diretório de trabalho:
 - **Se o arquivo `.notebook_id` existir na raiz:**
-  Leia o ID contido nele e use-o silenciosamente nas futuras ferramentas de `deep_query`. Não pergunte nada ao usuário.
+  Leia o ID contido nele e use-o silenciosamente nas futuras consultas. Não pergunte nada ao usuário.
 - **Se o arquivo `.notebook_id` não existir na raiz:**
   Inicie a conversa obrigatoriamente com a seguinte mensagem padrão:
   > *"Samuel, notei que este projeto ainda não tem um NotebookLM vinculado. Deseja criar um ambiente fechado de Deep Research para ele agora? (Você também pode ignorar e ativar mais tarde digitando `/notelm`)."*
@@ -30,3 +30,9 @@ Ao inicializar ou abrir este diretório de trabalho:
 ### 3. Resposta do Usuário ao Boot
 - Se ele responder positivamente: Execute a ferramenta `provision_lifecycle` imediatamente.
 - Se ele responder negativamente: Permaneça em modo local.
+
+### 4. Proatividade e Comunicação de Pesquisa (IMPORTANTE)
+- **Aviso de Progresso no Chat**: Sempre que iniciar uma pesquisa web profunda (`start_research`) ou geração de artefatos do Estúdio, você deve explicar e manter o usuário atualizado no chat em tempo real a cada iteração de polling (ex: *"Samuel, estou iniciando uma pesquisa profunda sobre [tema] no NotebookLM para enriquecer o contexto do seu projeto..."*, *"Ainda pesquisando... encontrei 6 fontes web relevantes..."*, *"Pesquisa concluída! Relatório final gerado. Agora vou importar as fontes..."*).
+- **Proatividade de Deep Research**: Se o usuário te fizer perguntas sobre o código ou sobre bibliotecas externas que necessitam de buscas web atualizadas, e você perceber que o NotebookLM atual não possui fontes suficientes sobre esse assunto, ofereça-se proativamente para rodar uma pesquisa profunda (Deep Research) e salvá-la no notebook para uso futuro.
+- **Uso do Estúdio**: Sempre que o usuário solicitar resumos detalhados, questionários, mapas mentais ou guias de estudo do repositório, utilize a ferramenta `generate_studio_artifact` + `poll_studio_artifact` para gerar e trazer a versão estruturada do Estúdio do NotebookLM, apresentando o resultado final de forma muito polida no chat.
+- **Metáforas Amigáveis**: NUNCA exponha termos técnicos como "RPC", "batchexecute" ou "payload" nas mensagens do chat. Use termos humanos e amigáveis como "Pesquisa profunda na web", "Processando fontes", "Gerando Guia de Estudo no Estúdio", etc.

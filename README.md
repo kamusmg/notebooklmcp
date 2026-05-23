@@ -1,165 +1,65 @@
-# 📓 NotebookLM CLI
+# 📓 NotebookLM MCP Server (V2.1)
 
-Converse com seus notebooks do **Google NotebookLM** direto pelo terminal — e deixe sua IA favorita (Claude Code, Antigravity CLI ou qualquer outra) consultar seus documentos automaticamente.
+Conecte o poder do **Google NotebookLM** diretamente ao seu assistente de Inteligência Artificial no **Antigravity**! 🚀
 
+Este projeto permite que a sua IA acesse seus documentos, faça pesquisas profundas na internet (Deep Research) e gere materiais de estudo (como questionários, resumos e slides) no **Estúdio do NotebookLM** sem que você precise abrir o site ou fazer configurações difíceis.
+
+---
+
+## 🌟 O que ele faz por você?
+
+- **Pesquisa Profunda (Deep Research) 🔍**: A IA faz buscas completas na internet sobre qualquer assunto e adiciona os resultados automaticamente como fontes no seu caderno virtual.
+- **Estúdio Inteligente 🎨**: Crie Guias de Estudo, Resumos de Reuniões, Questionários (Quizzes), Flashcards de memorização ou Mapas Mentais direto pelo chat da IA.
+- **Consultas Inteligentes 💬**: Faça perguntas sobre o seu código ou projeto. A IA consulta o NotebookLM silenciosamente em segundo plano para responder com a maior precisão possível.
+
+---
+
+## 🚀 Como Configurar (Para Iniciantes)
+
+Configurar é super simples e leva menos de 2 minutos! Siga os passos abaixo:
+
+### Passo 1 — Ativar no Chat
+Abra o chat da sua IDE Antigravity no seu projeto atual e digite o comando abaixo:
 ```bash
-note "Como funciona o sistema de ordens do projeto?"
+/notelm
 ```
+A IA detectará que o projeto não possui um caderno virtual vinculado e perguntará se você deseja criar um. Basta responder que **Sim**!
 
-```
-──────────────────────────────────────────────────────
-O sistema de ordens utiliza uma fila FIFO com prioridade
-por tipo de ativo. Ordens de mercado são executadas...
-──────────────────────────────────────────────────────
-```
+### Passo 2 — Conectar sua conta do Google 🔐
+Para que a IA possa ler e salvar as pesquisas, ela precisa acessar a sua conta do Google de forma segura.
+1. No chat, peça para a IA: *"Fazer login no Google"* ou digite a ferramenta de autenticação.
+2. Uma janela do navegador Google Chrome será aberta automaticamente.
+3. Faça o login normal na sua conta do Google (a mesma que você usa no NotebookLM).
+4. Assim que a página carregar, **feche a janela do navegador**.
+5. Pronto! A IA salvou o acesso de forma segura e local na sua máquina.
 
 ---
 
-## Como funciona
+## 💡 Como Usar no Dia a Dia (Exemplos Práticos)
 
-Este projeto é um **cliente CLI** para o pacote [`notebooklm-mcp`](https://www.npmjs.com/package/notebooklm-mcp). Ele abre o NotebookLM via Playwright (navegador em segundo plano), envia sua pergunta e retorna a resposta no terminal.
+Você não precisa rodar códigos no terminal! Basta conversar com o seu assistente de IA em português claro:
 
-Seus notebooks ficam registrados localmente — basta instalar uma vez, logar com Google, e usar para sempre.
+### 1. Fazer Pesquisa Profunda na Web
+Se você precisa que a IA entenda uma nova tecnologia, biblioteca ou assunto complexo:
+> 👤 **Você**: *"Faça uma Deep Research sobre a nova API do React 19 e salve no notebook."*
+> 🤖 **IA**: *"Estou iniciando a pesquisa profunda no NotebookLM... Encontrei 6 fontes relevantes na web... Importando as fontes no seu notebook... Pronto!"*
 
----
+### 2. Criar Materiais de Estudo (Estúdio)
+Peça para a IA gerar qualquer item do painel "Estúdio" do NotebookLM:
+- **Guia de Estudo**: *"Crie um guia de estudo baseado no nosso código atual."*
+- **Quiz / Questionário**: *"Gere um quiz com perguntas difíceis sobre a nossa arquitetura."*
+- **Resumo Executivo**: *"Crie um briefing doc resumindo os pontos principais do projeto."*
 
-## Instalação
-
-### Pré-requisitos
-
-- [Node.js 18+](https://nodejs.org) instalado
-- Conta no [Google NotebookLM](https://notebooklm.google.com) com pelo menos um notebook
-
-### Windows
-
-Abra o PowerShell como administrador e rode:
-
-```powershell
-git clone https://github.com/kamusmg/notebooklmcp.git
-cd notebooklmcp
-.\install.ps1
-```
-
-### macOS / Linux
-
-```bash
-git clone https://github.com/kamusmg/notebooklmcp.git
-cd notebooklmcp
-chmod +x install.sh
-./install.sh
-```
-
-### Passo 2 — Fazer login com Google
-
-Após instalar, rode o comando abaixo. Uma janela do Chrome vai abrir:
-
-```bash
-npx notebooklm-mcp setup_auth
-```
-
-1. Faça login na sua conta Google
-2. Acesse [notebooklm.google.com](https://notebooklm.google.com)
-3. Feche a janela — pronto, sessão salva!
-
-### Passo 3 — Registrar seu primeiro notebook
-
-Copie a URL do seu notebook no navegador e rode:
-
-```bash
-note add https://notebooklm.google.com/notebook/SEU-ID-AQUI "Nome do Projeto"
-```
-
-### Passo 4 — Usar!
-
-```bash
-note "Qual é a arquitetura do projeto?"
-```
+### 3. Fazer Perguntas Gerais
+Toda vez que você perguntar algo como *"Como funciona a nossa conexão com o banco de dados?"*, a IA usará o NotebookLM automaticamente para consultar os arquivos locais do seu repositório. Você não precisa pedir!
 
 ---
 
-## Comandos
+## 🔒 Segurança em Primeiro Lugar
 
-| Comando | O que faz |
-|---------|-----------|
-| `note "pergunta"` | Faz uma pergunta ao notebook ativo |
-| `note add <url> [nome]` | Registra um novo notebook |
-| `note list` | Lista todos os notebooks cadastrados |
-| `note use <id>` | Troca o notebook ativo |
-| `note remove <id>` | Remove um notebook da lista local |
-| `note info` | Mostra status e estatísticas |
-
-> O atalho `lm` funciona igual ao `note` — use o que preferir.
+- **Dados 100% Locais**: Os cookies de acesso da sua conta Google ficam salvos de forma criptografada apenas na sua máquina (no arquivo `.env`). Eles **nunca** são compartilhados ou enviados para a internet.
+- **Caderno Privado**: Os notebooks criados pertencem apenas à sua conta Google e só podem ser visualizados por você.
 
 ---
 
-## Integração com IA
-
-Este projeto inclui arquivos de instruções para os principais assistentes de IA. Quando você clona o repo e abre com seu assistente, ele já sabe o que é o projeto e como instalar — sem precisar explicar nada.
-
-| Assistente | Arquivo lido automaticamente |
-|------------|------------------------------|
-| Claude Code | `CLAUDE.md` |
-| Antigravity (agy) | `guia_antigravity.md` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
-| Cursor | `.cursorrules` |
-| Outros agentes | `AGENTS.md` |
-
-### Instalar via IA (recomendado)
-
-Clone o repo, abra com seu assistente e diga apenas:
-
-> *"Instala isso aqui."*
-
-O assistente lê as instruções, roda o instalador, e te guia pelo login do Google.
-
-### Claude Code (MCP)
-
-Para integrar o NotebookLM diretamente nas ferramentas do Claude, adicione ao seu `.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "notebooklm": {
-      "command": "npx",
-      "args": ["-y", "notebooklm-mcp@latest"]
-    }
-  }
-}
-```
-
-Depois você pode pedir ao Claude diretamente no chat:
-> *"Consulte o notebook sobre o sistema de pagamentos e explique como funciona o retry."*
-
-### Antigravity CLI (agy)
-
-O agente pode rodar `note "pergunta"` automaticamente sempre que precisar de contexto do seu projeto. Consulte o [`guia_antigravity.md`](guia_antigravity.md) para detalhes.
-
----
-
-## Renovar login (quando expirar)
-
-Se as respostas pararem de funcionar, o login pode ter expirado:
-
-```bash
-npx notebooklm-mcp setup_auth
-```
-
----
-
-## Segurança
-
-- O arquivo `auth.json` (cookies do Google) fica salvo **localmente** no seu computador
-- Nunca é enviado para este repositório (está no `.gitignore`)
-- Seus notebooks e dados **nunca saem da sua máquina**
-
----
-
-## Tutorial passo a passo
-
-Veja o [TUTORIAL.md](TUTORIAL.md) para um guia completo do zero para quem nunca usou terminal.
-
----
-
-## Licença
-
-MIT
+Feito com ❤️ para facilitar seus estudos e desenvolvimento. Qualquer dúvida, é só pedir ajuda para o assistente de IA no chat!
