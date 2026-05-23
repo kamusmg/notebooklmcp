@@ -73,8 +73,8 @@ async def wait_for_login(max_wait_seconds: int = 300) -> Optional[str]:
             url = page.get("url", "")
             ws_url = page.get("webSocketDebuggerUrl")
             
-            # Detect successful navigation to NotebookLM dashboard (excluding signin/accounts pages)
-            if "notebooklm.google.com" in url and "accounts.google.com" not in url and "signin" not in url and ws_url:
+            # Detect successful navigation to NotebookLM dashboard (excluding signin/accounts/login pages)
+            if "notebooklm.google.com" in url and "notebooklm.google.com/login" not in url and "accounts.google.com" not in url and "signin" not in url and ws_url:
                 logger.info("Login detectado com sucesso!")
                 print("✅ Login detectado com sucesso!", file=sys.stderr)
                 return ws_url
