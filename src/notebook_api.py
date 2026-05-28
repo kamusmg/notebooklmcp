@@ -9,6 +9,8 @@ from typing import Optional, Tuple, List, Any
 import httpx
 from src.google_auth import create_http_client
 from src.exceptions import RpcStructureError, CaptchaRequiredError
+from src.rpc_ids import RpcId
+from src.status_codes import parse_research_status, parse_artifact_status
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +101,7 @@ class NotebookLMClient:
 
     async def create_notebook(self, title: str) -> str:
         """Creates a new notebook with the given title and returns its ID."""
-        rpc_id = "CCqFvf"
+        rpc_id = RpcId.CREATE_NOTEBOOK
         params = [title, None, None, [2], [1, None, None, None, None, None, None, None, None, None, [1]]]
         url = self._build_batch_url(rpc_id)
         body = self._build_batch_body(rpc_id, params)
@@ -120,7 +122,7 @@ class NotebookLMClient:
 
     async def add_source_url(self, notebook_id: str, source_url: str) -> str:
         """Adds a web/git repository URL to the specified notebook."""
-        rpc_id = "izAoDd"
+        rpc_id = RpcId.ADD_SOURCE
         # Check if youtube url or general web
         is_youtube = "youtube.com" in source_url.lower() or "youtu.be" in source_url.lower()
         if is_youtube:
@@ -246,10 +248,10 @@ class NotebookLMClient:
         source_type = 1
         
         if mode_lower == "fast":
-            rpc_id = "Ljjv0c"
+            rpc_id = RpcId.START_FAST_RESEARCH
             params = [[query, source_type], None, 1, notebook_id]
         else:
-            rpc_id = "QA9ei"
+            rpc_id = RpcId.START_DEEP_RESEARCH
             params = [None, [1], [query, source_type], 5, notebook_id]
             
         url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
@@ -277,7 +279,7 @@ class NotebookLMClient:
 
     async def poll_research(self, notebook_id: str, task_id: str) -> dict:
         """Polls the status of research tasks in the notebook."""
-        rpc_id = "e3bVqc"
+        rpc_id = RpcId.POLL_RESEARCH
         params = [None, None, notebook_id]
         url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
         body = self._build_batch_body(rpc_id, params)
@@ -311,13 +313,7 @@ class NotebookLMClient:
             query_text = safe_get(query_inner, 0, default="", context="poll_research.query_text") if isinstance(query_inner, list) else ""
             status_code = safe_get(task_info, 4, context="poll_research.status_code")
 
-            # Research status codes: 1 = in_progress, 2 or 6 = completed, others = failed
-            if status_code in (2, 6):
-                status = "completed"
-            elif status_code == 1 or status_code is None:
-                status = "in_progress"
-            else:
-                status = "failed"
+            status = parse_research_status(status_code)
 
             sources_bundle = safe_get(task_info, 3, context="poll_research.sources_bundle")
             sources_data = safe_get(sources_bundle, 0, default=[], context="poll_research.sources_data") if isinstance(sources_bundle, list) else []
@@ -372,7 +368,7 @@ class NotebookLMClient:
 
     async def import_research_sources(self, notebook_id: str, task_id: str, sources: list) -> list:
         """Imports research sources (web links or reports) into the notebook."""
-        rpc_id = "LBwxtb"
+        rpc_id = RpcId.IMPORT_RESEARCH_SOURCES
         source_array = []
         
         for src in sources:
@@ -410,7 +406,7 @@ class NotebookLMClient:
 
     async def get_source_ids(self, notebook_id: str) -> list:
         """Gets all source IDs currently linked to a notebook."""
-        rpc_id = "rLM1Ne" # GET_NOTEBOOK
+        rpc_id = RpcId.GET_NOTEBOOK
         params = [notebook_id, None, [2], None, 0]
         url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
         body = self._build_batch_body(rpc_id, params)
@@ -437,7 +433,7 @@ class NotebookLMClient:
 
     async def generate_studio_artifact(self, notebook_id: str, source_ids: list, artifact_type: str, custom_prompt: str = None) -> str:
         """Generates a Studio artifact (Study Guide, Briefing Doc, Quiz, Slide Deck, etc.)"""
-        rpc_id = "R7cb6c" # CREATE_ARTIFACT
+        rpc_id = RpcId.CREATE_ARTIFACT
         
         # Nest source IDs: double = [[id, ...]], triple = [[[id, ...]]]
         source_ids_double = [source_ids]
@@ -562,7 +558,7 @@ class NotebookLMClient:
 
     async def poll_studio_artifact(self, notebook_id: str, artifact_id: str) -> dict:
         """Polls the status and fetches the content of a generated artifact."""
-        rpc_id = "gArtLc" # LIST_ARTIFACTS
+        rpc_id = RpcId.LIST_ARTIFACTS
         params = [[2], notebook_id]
         url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
         body = self._build_batch_body(rpc_id, params)
@@ -589,13 +585,7 @@ class NotebookLMClient:
             type_code = safe_get(art, 2, default=0, context="poll_artifact.type_code")
             title = safe_get(art, 1, default="", context="poll_artifact.title")
 
-            # Status: 1=processing, 2=pending, 3=completed, 4=failed
-            if status_code == 3:
-                status = "completed"
-            elif status_code in (1, 2):
-                status = "in_progress"
-            else:
-                status = "failed"
+            status = parse_artifact_status(status_code)
 
             content = ""
             # For reports/markdown artifacts (type=2), completed content is at index 5
