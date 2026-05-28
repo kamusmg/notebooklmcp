@@ -12,6 +12,8 @@ class Settings:
     # Set NLM_CSRF_TTL > 0 only after A/B testing confirms no CAPTCHA regression.
     csrf_cache_ttl_seconds: int = int(os.getenv("NLM_CSRF_TTL", "0"))
     capture_fixtures: bool = os.getenv("RTK_CAPTURE_FIXTURES") == "1"
+    # When set, deep_query/poll_research/etc fall back to this notebook if caller omits notebook_id.
+    default_notebook_id: str = os.getenv("DEFAULT_NOTEBOOK_ID", "")
 
 
 settings = Settings()

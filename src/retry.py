@@ -1,7 +1,7 @@
 """Retry with exponential backoff for transient errors.
 
 Only retries on:
-- httpx.TimeoutException, httpx.NetworkError
+- curl_cffi Timeout / ConnectionError (network glitches)
 - HTTP 5xx
 - HTTP 429 (rate limit, with larger delay)
 
@@ -13,7 +13,11 @@ import asyncio
 import logging
 from typing import Callable, TypeVar, Awaitable
 
-import httpx
+from curl_cffi.requests.exceptions import (
+    Timeout,
+    ConnectionError as CurlConnectionError,
+    HTTPError,
+)
 
 from src.exceptions import AuthExpiredError, CaptchaRequiredError
 
@@ -33,22 +37,23 @@ async def with_retry(
             return await func()
         except (AuthExpiredError, CaptchaRequiredError):
             raise  # Never retry auth failures
-        except (httpx.TimeoutException, httpx.NetworkError) as e:
+        except (Timeout, CurlConnectionError) as e:
             last_exc = e
             delay = base_delay * (factor ** attempt)
             logger.warning("Retry %d/%d after %.1fs — %s: %s", attempt + 1, max_retries, delay, type(e).__name__, e)
             await asyncio.sleep(delay)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
+        except HTTPError as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status == 429:
                 delay = base_delay * (factor ** attempt) * 3  # larger backoff for rate limit
                 logger.warning("Rate limit (429), retry after %.1fs", delay)
                 await asyncio.sleep(delay)
                 last_exc = e
-            elif 500 <= e.response.status_code < 600:
+            elif status is not None and 500 <= status < 600:
                 delay = base_delay * (factor ** attempt)
-                logger.warning("HTTP %d, retry after %.1fs", e.response.status_code, delay)
+                logger.warning("HTTP %d, retry after %.1fs", status, delay)
                 await asyncio.sleep(delay)
                 last_exc = e
             else:
-                raise  # 4xx (non-429) — don't retry
+                raise  # 4xx (non-429) or unknown status — don't retry
     raise last_exc

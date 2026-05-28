@@ -35,7 +35,6 @@ class TestParseBatchResponse:
     def _make_client(self):
         # Client without real cookies — only testing parse methods
         from unittest.mock import MagicMock
-        import httpx
         client = NotebookLMClient.__new__(NotebookLMClient)
         client.csrf_token = "test_csrf"
         client.build_label = "test_bl"

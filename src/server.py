@@ -13,6 +13,7 @@ from src.notebook_api import NotebookLMClient
 from src.exceptions import AuthExpiredError, CaptchaRequiredError, NotebookLMError
 from src.telemetry import tracker
 from src.validators import validate_notebook_id, validate_url, validate_question, validate_mode, validate_artifact_type
+from src.config import settings
 
 # Configure logging to stderr to prevent stdout corruption in JSON-RPC stdio transport
 logging.basicConfig(
@@ -89,16 +90,20 @@ async def provision_lifecycle(project_name: str, github_repo_url: str) -> Dict[s
         }
 
 @mcp.tool()
-async def deep_query(notebook_id: str, question: str) -> Dict[str, Any]:
+async def deep_query(question: str, notebook_id: str = "") -> Dict[str, Any]:
     """
     Sends a query directly to the chat interface of the specified NotebookLM notebook,
     returning the grounded synthesized response. Consumes zero local token quota.
 
     Parameters:
-    - notebook_id: The ID of the NotebookLM notebook.
     - question: The query/prompt containing engineering questions or code requests.
+    - notebook_id: The ID of the NotebookLM notebook. If omitted, uses DEFAULT_NOTEBOOK_ID from .env.
     """
     try:
+        if not notebook_id:
+            notebook_id = settings.default_notebook_id
+            if not notebook_id:
+                raise ValueError("notebook_id is empty and DEFAULT_NOTEBOOK_ID is not set in .env")
         validate_notebook_id(notebook_id)
         validate_question(question)
         client = await _get_authenticated_client()

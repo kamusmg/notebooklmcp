@@ -2,7 +2,7 @@ import os
 import re
 import logging
 from typing import TypedDict, Tuple, Optional
-import httpx
+from curl_cffi.requests import AsyncSession
 from dotenv import load_dotenv
 from src.exceptions import AuthExpiredError, CaptchaRequiredError
 
@@ -56,8 +56,14 @@ def parse_cookies_string(cookie_header: str) -> dict[str, str]:
             cookies[k.strip()] = v.strip()
     return cookies
 
-def create_http_client(cookie_header: str) -> httpx.AsyncClient:
-    """Creates a configured httpx.AsyncClient with security-bypass headers."""
+def create_http_client(cookie_header: str) -> AsyncSession:
+    """Creates a configured curl_cffi AsyncSession that impersonates Chrome 131.
+
+    Uses BoringSSL TLS stack matching real Chrome (JA3/JA4 indistinguishable from
+    a real browser), plus all SACRED headers required for Google's RPC same-origin
+    bypass. Cookies are loaded from GOOGLE_COOKIES_B64 (preserves domain metadata)
+    with a fallback to the flat cookie header string.
+    """
     import base64
     import json
 
@@ -70,11 +76,19 @@ def create_http_client(cookie_header: str) -> httpx.AsyncClient:
         "Referer": "https://notebooklm.google.com/",
         "X-Goog-AuthUser": "0",
         "X-Same-Domain": "1",  # Crucial bypass header for Google RPC
+        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin"
     }
-    client = httpx.AsyncClient(headers=headers, timeout=120.0, follow_redirects=True)
+    client = AsyncSession(
+        headers=headers,
+        timeout=120.0,
+        impersonate="chrome131",
+        allow_redirects=True,
+    )
 
     # First try to load full cookies with domains and paths (preserves subdomains mapping)
     cookies_b64 = os.getenv("GOOGLE_COOKIES_B64")
@@ -95,7 +109,7 @@ def create_http_client(cookie_header: str) -> httpx.AsyncClient:
         client.cookies.set(k, v, domain=".google.com")
     return client
 
-async def refresh_at_and_bl(client: httpx.AsyncClient) -> Tuple[str, str]:
+async def refresh_at_and_bl(client: AsyncSession) -> Tuple[str, str]:
     """Scrapes notebooklm.google.com to extract the CSRF ('at') token and build label ('bl')."""
     try:
         response = await client.get("https://notebooklm.google.com/")
@@ -103,6 +117,11 @@ async def refresh_at_and_bl(client: httpx.AsyncClient) -> Tuple[str, str]:
         if response.status_code in (401, 403) or "accounts.google.com" in str(response.url):
             raise AuthExpiredError(
                 "Google cookies expired. Run authenticate() to renew."
+            )
+
+        if "support.google.com/accounts" in str(response.url):
+            raise AuthExpiredError(
+                "Google redirected to support page (cookies likely expired). Run authenticate() to renew."
             )
 
         if response.status_code != 200:

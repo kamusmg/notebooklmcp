@@ -6,7 +6,6 @@ import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple, List, Any
-import httpx
 from src.google_auth import create_http_client
 from src.exceptions import RpcStructureError, CaptchaRequiredError
 from src.rpc_ids import RpcId
