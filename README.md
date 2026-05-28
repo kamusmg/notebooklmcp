@@ -1,65 +1,127 @@
-# 📓 NotebookLM MCP Server (V2.1)
+# NotebookLM MCP Desktop (v3.0)
 
-Conecte o poder do **Google NotebookLM** diretamente ao seu assistente de Inteligência Artificial no **Antigravity**! 🚀
+Servidor MCP em Python para consultar o **Google NotebookLM** diretamente de agentes de IA.
+Funciona no **Claude Code** e no **Google Antigravity IDE** via protocolo MCP (stdio).
 
-Este projeto permite que a sua IA acesse seus documentos, faça pesquisas profundas na internet (Deep Research) e gere materiais de estudo (como questionários, resumos e slides) no **Estúdio do NotebookLM** sem que você precise abrir o site ou fazer configurações difíceis.
-
----
-
-## 🌟 O que ele faz por você?
-
-- **Pesquisa Profunda (Deep Research) 🔍**: A IA faz buscas completas na internet sobre qualquer assunto e adiciona os resultados automaticamente como fontes no seu caderno virtual.
-- **Estúdio Inteligente 🎨**: Crie Guias de Estudo, Resumos de Reuniões, Questionários (Quizzes), Flashcards de memorização ou Mapas Mentais direto pelo chat da IA.
-- **Consultas Inteligentes 💬**: Faça perguntas sobre o seu código ou projeto. A IA consulta o NotebookLM silenciosamente em segundo plano para responder com a maior precisão possível.
+Opera por chamadas diretas aos endpoints RPC internos do Google — sem Playwright, sem automação de tela.
 
 ---
 
-## 🚀 Como Configurar (Para Iniciantes)
+## O que faz
 
-Configurar é super simples e leva menos de 2 minutos! Siga os passos abaixo:
+- **Deep Research** — inicia pesquisa web profunda no NotebookLM e importa as fontes encontradas
+- **Query direta** — faz perguntas grounded nas suas fontes (equivale a abrir o chat do NotebookLM)
+- **Studio artifacts** — gera Study Guide, Briefing Doc, Quiz, Slide Deck, Data Table no Estúdio
+- **Provision** — cria um notebook novo e vincula um repositório GitHub como fonte
 
-### Passo 1 — Ativar no Chat
-Abra o chat da sua IDE Antigravity no seu projeto atual e digite o comando abaixo:
-```bash
-/notelm
+## Instalação rápida
+
+```powershell
+cd "D:\projetos D\notebooklmcpdesktop"
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 ```
-A IA detectará que o projeto não possui um caderno virtual vinculado e perguntará se você deseja criar um. Basta responder que **Sim**!
 
-### Passo 2 — Conectar sua conta do Google 🔐
-Para que a IA possa ler e salvar as pesquisas, ela precisa acessar a sua conta do Google de forma segura.
-1. No chat, peça para a IA: *"Fazer login no Google"* ou digite a ferramenta de autenticação.
-2. Uma janela do navegador Google Chrome será aberta automaticamente.
-3. Faça o login normal na sua conta do Google (a mesma que você usa no NotebookLM).
-4. Assim que a página carregar, **feche a janela do navegador**.
-5. Pronto! A IA salvou o acesso de forma segura e local na sua máquina.
+### Autenticação
 
----
+Os cookies do Google ficam armazenados em texto simples no arquivo `.env` local.
+**Eles nunca são enviados para fora da sua máquina.** Você pode deletar o `.env` a qualquer momento.
 
-## 💡 Como Usar no Dia a Dia (Exemplos Práticos)
+Para autenticar:
+```powershell
+# Importar cookies do projeto Node.js (se você já tinha autenticado lá)
+python scripts/import_cookies_from_node.py
 
-Você não precisa rodar códigos no terminal! Basta conversar com o seu assistente de IA em português claro:
+# OU autenticar via Chrome (abre janela do browser)
+python -m src.browser_auth
+```
 
-### 1. Fazer Pesquisa Profunda na Web
-Se você precisa que a IA entenda uma nova tecnologia, biblioteca ou assunto complexo:
-> 👤 **Você**: *"Faça uma Deep Research sobre a nova API do React 19 e salve no notebook."*
-> 🤖 **IA**: *"Estou iniciando a pesquisa profunda no NotebookLM... Encontrei 6 fontes relevantes na web... Importando as fontes no seu notebook... Pronto!"*
+### Configurar no Claude Code
 
-### 2. Criar Materiais de Estudo (Estúdio)
-Peça para a IA gerar qualquer item do painel "Estúdio" do NotebookLM:
-- **Guia de Estudo**: *"Crie um guia de estudo baseado no nosso código atual."*
-- **Quiz / Questionário**: *"Gere um quiz com perguntas difíceis sobre a nossa arquitetura."*
-- **Resumo Executivo**: *"Crie um briefing doc resumindo os pontos principais do projeto."*
+Adicione em `~/.claude/settings.json`:
+```json
+"mcpServers": {
+  "notebooklm-python": {
+    "command": "python",
+    "args": ["-m", "src.server"],
+    "cwd": "D:\\projetos D\\notebooklmcpdesktop"
+  }
+}
+```
 
-### 3. Fazer Perguntas Gerais
-Toda vez que você perguntar algo como *"Como funciona a nossa conexão com o banco de dados?"*, a IA usará o NotebookLM automaticamente para consultar os arquivos locais do seu repositório. Você não precisa pedir!
+### Configurar no Antigravity
 
----
+Adicione em `~/.gemini/antigravity-ide/mcp_config.json`:
+```json
+"notebooklm-python": {
+  "command": "python",
+  "args": ["-m", "src.server"],
+  "cwd": "D:\\projetos D\\notebooklmcpdesktop",
+  "type": "stdio"
+}
+```
 
-## 🔒 Segurança em Primeiro Lugar
+## Tools MCP disponíveis
 
-- **Dados 100% Locais**: Os cookies de acesso da sua conta Google ficam salvos de forma criptografada apenas na sua máquina (no arquivo `.env`). Eles **nunca** são compartilhados ou enviados para a internet.
-- **Caderno Privado**: Os notebooks criados pertencem apenas à sua conta Google e só podem ser visualizados por você.
+| Tool | Parâmetros | O que faz |
+|------|-----------|-----------|
+| `health_check` | — | Verifica autenticação e conectividade |
+| `deep_query` | `notebook_id`, `question` | Pergunta direta ao chat do NotebookLM |
+| `provision_lifecycle` | `project_name`, `github_repo_url` | Cria notebook e vincula repo |
+| `authenticate` | `method="browser"` | Abre Chrome para login |
+| `start_research` | `notebook_id`, `query`, `mode` | Inicia pesquisa web (fast/deep) |
+| `poll_research` | `notebook_id`, `task_id` | Status da pesquisa + fontes encontradas |
+| `import_research_sources` | `notebook_id`, `task_id`, `sources` | Importa fontes para o notebook |
+| `get_notebook_sources` | `notebook_id` | Lista IDs de fontes ativas |
+| `generate_studio_artifact` | `notebook_id`, `artifact_type` | Gera artefato do Estúdio |
+| `poll_studio_artifact` | `notebook_id`, `artifact_id` | Status + conteúdo do artefato |
+| `usage_stats` | — | Estatísticas de uso local |
 
----
+### Tipos de artefato do Estúdio
 
-Feito com ❤️ para facilitar seus estudos e desenvolvimento. Qualquer dúvida, é só pedir ajuda para o assistente de IA no chat!
+`study_guide` | `briefing_doc` | `blog_post` | `quiz` | `slide_deck` | `data_table` | `custom`
+
+## Rodar testes
+
+```powershell
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+## Estrutura
+
+```
+src/
+  server.py          # 11 tools MCP (FastMCP)
+  notebook_api.py    # NotebookLMClient — RPC batchexecute
+  google_auth.py     # Autenticação + fingerprint anti-bot (SAGRADO)
+  browser_auth.py    # Extração de cookies via Chrome CDP
+  exceptions.py      # Exceções tipadas
+  rpc_ids.py         # Constantes de RPC ID
+  status_codes.py    # Enums de status
+  config.py          # Settings centralizados
+  validators.py      # Validação de inputs
+  retry.py           # Retry com exponential backoff
+  telemetry.py       # Telemetria local
+scripts/
+  import_cookies_from_node.py  # Migração de cookies do projeto Node.js
+tests/
+  test_auth.py        # 11 testes de autenticação
+  test_notebook_api.py # 16 testes de parsing
+  test_status_codes.py # 13 testes de status codes
+```
+
+## Coordenação Claude Code + Antigravity
+
+Este projeto é usado por dois agentes de IA. Ver `COORDINATION.md` e `SACRED.md` antes de fazer qualquer mudança.
+
+## Segurança
+
+- Cookies armazenados em texto simples no `.env` local (protegidos apenas pelo filesystem do OS)
+- Nenhuma informação enviada para fora da sua máquina
+- `.env` está no `.gitignore` — nunca é commitado
+
+## Licença
+
+MIT
