@@ -3,23 +3,36 @@ import logging
 import os
 import time
 import urllib.parse
+import uuid
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Any
 import httpx
 from src.google_auth import create_http_client
+from src.exceptions import RpcStructureError, CaptchaRequiredError
 
 logger = logging.getLogger(__name__)
+
+
+def safe_get(lst: Any, idx: int, default: Any = None, context: str = "") -> Any:
+    """Defensive list access — logs warning instead of raising on invalid index."""
+    if not isinstance(lst, list):
+        logger.warning("safe_get(%s): expected list, got %s", context, type(lst).__name__)
+        return default
+    if len(lst) <= idx:
+        logger.warning("safe_get(%s): idx %d >= len %d", context, idx, len(lst))
+        return default
+    return lst[idx]
+
 
 class NotebookLMClient:
     def __init__(self, cookies_header: str, csrf_token: str, build_label: str):
         self.client = create_http_client(cookies_header)
         self.csrf_token = csrf_token
         self.build_label = build_label
-        self.req_id_counter = 100000
 
     def _get_next_req_id(self) -> int:
-        self.req_id_counter += 100000
-        return self.req_id_counter
+        # UUID4 eliminates the race condition from the old shared counter
+        return uuid.uuid4().int & 0x7FFFFFFF
 
     def _build_batch_url(self, rpc_id: str, path: str = "/") -> str:
         req_id = self._get_next_req_id()
@@ -53,6 +66,10 @@ class NotebookLMClient:
         return body + "&"
 
     def _parse_batch_response(self, response_text: str) -> Optional[list]:
+        if "Please verify you're human" in response_text or "captcha" in response_text.lower()[:1000]:
+            raise CaptchaRequiredError(
+                "Google requires CAPTCHA. Run authenticate() to complete manual login."
+            )
         if response_text.startswith(")]}'"):
             response_text = response_text[4:]
         lines = response_text.strip().split("\n")
@@ -94,12 +111,12 @@ class NotebookLMClient:
             raise RuntimeError(f"Failed to create notebook. HTTP {response.status_code}")
 
         res = self._parse_batch_response(response.text)
-        if res and isinstance(res, list) and len(res) > 2:
-            notebook_id = res[2]
+        notebook_id = safe_get(res, 2, context="create_notebook.id") if res else None
+        if notebook_id and isinstance(notebook_id, str):
             logger.info(f"Notebook created successfully with ID: {notebook_id}")
             return notebook_id
 
-        raise ValueError(f"Unexpected response structure when creating notebook: {response.text[:500]}")
+        raise RpcStructureError(f"Unexpected response structure when creating notebook: {response.text[:500]}")
 
     async def add_source_url(self, notebook_id: str, source_url: str) -> str:
         """Adds a web/git repository URL to the specified notebook."""
@@ -256,7 +273,7 @@ class NotebookLMClient:
                 "status": "in_progress"
             }
             
-        raise ValueError(f"Unexpected response when starting research: {response.text[:500]}")
+        raise RpcStructureError(f"Unexpected response when starting research: {response.text[:500]}")
 
     async def poll_research(self, notebook_id: str, task_id: str) -> dict:
         """Polls the status of research tasks in the notebook."""
@@ -290,9 +307,10 @@ class NotebookLMClient:
             if not task_info or not isinstance(task_info, list):
                 continue
                 
-            query_text = task_info[1][0] if len(task_info) > 1 and isinstance(task_info[1], list) and task_info[1] else ""
-            status_code = task_info[4] if len(task_info) > 4 else None
-            
+            query_inner = safe_get(task_info, 1, context="poll_research.query_inner")
+            query_text = safe_get(query_inner, 0, default="", context="poll_research.query_text") if isinstance(query_inner, list) else ""
+            status_code = safe_get(task_info, 4, context="poll_research.status_code")
+
             # Research status codes: 1 = in_progress, 2 or 6 = completed, others = failed
             if status_code in (2, 6):
                 status = "completed"
@@ -300,9 +318,9 @@ class NotebookLMClient:
                 status = "in_progress"
             else:
                 status = "failed"
-                
-            sources_bundle = task_info[3] if len(task_info) > 3 else None
-            sources_data = sources_bundle[0] if isinstance(sources_bundle, list) and sources_bundle else []
+
+            sources_bundle = safe_get(task_info, 3, context="poll_research.sources_bundle")
+            sources_data = safe_get(sources_bundle, 0, default=[], context="poll_research.sources_data") if isinstance(sources_bundle, list) else []
             
             parsed_sources = []
             report = ""
@@ -321,11 +339,12 @@ class NotebookLMClient:
                         source_report = src[1][1]
                     elif isinstance(src[1], str):
                         title = src[1]
-                        # Look for report markdown text (usually in src[6][0] or src[6])
-                        if len(src) > 6 and isinstance(src[6], list) and src[6]:
-                            source_report = src[6][0]
-                        elif len(src) > 6 and isinstance(src[6], str):
-                            source_report = src[6]
+                        # Report markdown is usually in src[6][0] or src[6]
+                        src6 = safe_get(src, 6, context="poll_research.src6")
+                        if isinstance(src6, list):
+                            source_report = safe_get(src6, 0, default="", context="poll_research.src6[0]")
+                        elif isinstance(src6, str):
+                            source_report = src6
                 else:
                     url_str = src[0] if isinstance(src[0], str) else ""
                     title = src[1] if len(src) > 1 and isinstance(src[1], str) else ""
@@ -403,15 +422,15 @@ class NotebookLMClient:
             
         res = self._parse_batch_response(response.text)
         source_ids = []
-        if res and isinstance(res, list) and len(res) > 0:
-            nb_info = res[0]
-            if isinstance(nb_info, list) and len(nb_info) > 1 and isinstance(nb_info[1], list):
-                sources = nb_info[1]
+        nb_info = safe_get(res, 0, context="get_source_ids.nb_info") if res else None
+        if isinstance(nb_info, list):
+            sources = safe_get(nb_info, 1, context="get_source_ids.sources")
+            if isinstance(sources, list):
                 for src in sources:
                     if isinstance(src, list) and src:
-                        first = src[0]
+                        first = safe_get(src, 0, context="get_source_ids.src[0]")
                         if isinstance(first, list) and first:
-                            sid = first[0]
+                            sid = safe_get(first, 0, context="get_source_ids.sid")
                             if isinstance(sid, str):
                                 source_ids.append(sid)
         return source_ids
@@ -539,7 +558,7 @@ class NotebookLMClient:
                 artifact_id = inner[0]
                 return str(artifact_id)
                 
-        raise ValueError(f"Unexpected response during artifact generation: {response.text[:500]}")
+        raise RpcStructureError(f"Unexpected response during artifact generation: {response.text[:500]}")
 
     async def poll_studio_artifact(self, notebook_id: str, artifact_id: str) -> dict:
         """Polls the status and fetches the content of a generated artifact."""
@@ -561,31 +580,36 @@ class NotebookLMClient:
             res = res[0]
             
         for art in res:
-            if isinstance(art, list) and len(art) > 0 and str(art[0]) == artifact_id:
-                status_code = art[4] if len(art) > 4 else 0
-                type_code = art[2] if len(art) > 2 else 0
-                title = art[1] if len(art) > 1 else ""
-                
-                # Status: 1=processing, 2=pending, 3=completed, 4=failed
-                if status_code == 3:
-                    status = "completed"
-                elif status_code in (1, 2):
-                    status = "in_progress"
-                else:
-                    status = "failed"
-                    
-                content = ""
-                # For reports/markdown artifacts (type=2), completed content is at index 5
-                if status == "completed" and type_code == 2:
-                    content = art[5] if len(art) > 5 and isinstance(art[5], str) else ""
-                    
-                return {
-                    "artifact_id": artifact_id,
-                    "title": title,
-                    "type_code": type_code,
-                    "status": status,
-                    "content": content
-                }
+            if not (isinstance(art, list) and art):
+                continue
+            if str(safe_get(art, 0, context="poll_artifact.id")) != artifact_id:
+                continue
+
+            status_code = safe_get(art, 4, default=0, context="poll_artifact.status_code")
+            type_code = safe_get(art, 2, default=0, context="poll_artifact.type_code")
+            title = safe_get(art, 1, default="", context="poll_artifact.title")
+
+            # Status: 1=processing, 2=pending, 3=completed, 4=failed
+            if status_code == 3:
+                status = "completed"
+            elif status_code in (1, 2):
+                status = "in_progress"
+            else:
+                status = "failed"
+
+            content = ""
+            # For reports/markdown artifacts (type=2), completed content is at index 5
+            if status == "completed" and type_code == 2:
+                raw = safe_get(art, 5, context="poll_artifact.content")
+                content = raw if isinstance(raw, str) else ""
+
+            return {
+                "artifact_id": artifact_id,
+                "title": title,
+                "type_code": type_code,
+                "status": status,
+                "content": content
+            }
                 
         return {"status": "not_found"}
 

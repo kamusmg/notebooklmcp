@@ -72,8 +72,8 @@ async def wait_for_login(max_wait_seconds: int = 300) -> Optional[str]:
     """Poll open pages until user logs in and reaches the main NotebookLM page."""
     start_time = time.time()
     logger.info("Aguardando login no Google NotebookLM...")
-    print("⏳ Aguardando você fazer login no navegador...", file=sys.stderr)
-    print("   (O script vai detectar automaticamente quando você entrar)", file=sys.stderr)
+    logger.info("⏳ Aguardando você fazer login no navegador...")
+    logger.info("   (O script vai detectar automaticamente quando você entrar)")
 
     while time.time() - start_time < max_wait_seconds:
         pages = await get_pages()
@@ -86,7 +86,7 @@ async def wait_for_login(max_wait_seconds: int = 300) -> Optional[str]:
                 # Ensure the user has actually logged in (SID cookie exists) to avoid Chrome startup race conditions
                 if await has_logged_in_cookies(ws_url):
                     logger.info("Login detectado com sucesso!")
-                    print("✅ Login detectado com sucesso!", file=sys.stderr)
+                    logger.info("✅ Login detectado com sucesso!")
                     return ws_url
                 
         await asyncio.sleep(2)
@@ -139,7 +139,7 @@ async def run_browser_login() -> dict:
         os.makedirs(profile_dir, exist_ok=True)
 
         logger.info("Iniciando Chrome com porta de depuração remota 9222...")
-        print("🚀 Abrindo o Google Chrome para autenticação...", file=sys.stderr)
+        logger.info("🚀 Abrindo o Google Chrome para autenticação...")
         
         chrome_args = [
             chrome_path,
@@ -172,7 +172,7 @@ async def run_browser_login() -> dict:
         raise TimeoutError("Tempo limite esgotado esperando o login do usuário (5 minutos).")
 
     # Extract cookies
-    print("🍪 Extraindo cookies da sessão...", file=sys.stderr)
+    logger.info("🍪 Extraindo cookies da sessão...")
     cookies_list = await extract_cookies_via_cdp(ws_url)
 
     required_keys = ["SID", "HSID", "SSID", "__Secure-3PAPISID"]
@@ -210,7 +210,7 @@ ANTIGRAVITY_PROJECT_MODE="PROACTIVE"
     with open(".env", "w", encoding="utf-8") as f:
         f.write(env_content)
 
-    print("📁 Cookies salvos com sucesso no arquivo .env!", file=sys.stderr)
+    logger.info("📁 Cookies salvos com sucesso no arquivo .env!")
     return extracted
 
 if __name__ == "__main__":

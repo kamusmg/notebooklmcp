@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.google_auth import get_google_cookies, format_cookie_header, refresh_at_and_bl
 from src.notebook_api import NotebookLMClient
+from src.exceptions import AuthExpiredError, CaptchaRequiredError, NotebookLMError
 
 # Configure logging to stderr to prevent stdout corruption in JSON-RPC stdio transport
 logging.basicConfig(

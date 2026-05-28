@@ -4,6 +4,7 @@ import logging
 from typing import TypedDict, Tuple, Optional
 import httpx
 from dotenv import load_dotenv
+from src.exceptions import AuthExpiredError, CaptchaRequiredError
 
 load_dotenv()
 
@@ -98,32 +99,44 @@ async def refresh_at_and_bl(client: httpx.AsyncClient) -> Tuple[str, str]:
     """Scrapes notebooklm.google.com to extract the CSRF ('at') token and build label ('bl')."""
     try:
         response = await client.get("https://notebooklm.google.com/")
+
+        if response.status_code in (401, 403) or "accounts.google.com" in str(response.url):
+            raise AuthExpiredError(
+                "Google cookies expired. Run authenticate() to renew."
+            )
+
         if response.status_code != 200:
             raise RuntimeError(f"Failed to access NotebookLM homepage. Status: {response.status_code}")
 
         html = response.text
 
-        # Extract CSRF ('at') token
+        if "Please verify you're human" in html or "captcha" in html.lower()[:2000]:
+            raise CaptchaRequiredError(
+                "Google requires CAPTCHA. Run authenticate() to complete manual login."
+            )
+
+        # Extract CSRF ('at') token — SACRED: regex name "SNlM0e" is reverse-engineered
         at_match = re.search(r'"SNlM0e":"([^"]+)"', html)
         if not at_match:
             raise ValueError("Could not find Google CSRF 'at' token in page source. Please verify your cookies.")
         csrf_token = at_match.group(1)
 
-        # Extract Build Label ('bl')
+        # Extract Build Label ('bl') — SACRED: regex name "cfb2h" is reverse-engineered
         bl_match = re.search(r'"cfb2h":"([^"]+)"', html)
         if bl_match:
             build_label = bl_match.group(1)
         else:
-            # Secondary fallback for bl
             bl_match_fallback = re.search(r'"bl":"([^"]+)"', html)
             if bl_match_fallback:
                 build_label = bl_match_fallback.group(1)
             else:
-                build_label = "boq_labs-tailwind-frontend_20260121.08_p0"  # Default fallback
+                build_label = "boq_labs-tailwind-frontend_20260121.08_p0"
 
         logger.info("Successfully authenticated and retrieved CSRF token and build label.")
         return csrf_token, build_label
 
+    except (AuthExpiredError, CaptchaRequiredError):
+        raise
     except Exception as e:
         logger.error(f"Error during Google authentication/scraping: {str(e)}")
         raise
