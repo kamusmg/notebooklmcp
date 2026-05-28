@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import time
 import urllib.parse
+from pathlib import Path
 from typing import Optional, Tuple, List
 import httpx
 from src.google_auth import create_http_client
@@ -67,6 +69,17 @@ class NotebookLMClient:
                 continue
         return None
 
+    @staticmethod
+    def _save_fixture(rpc_id: str, response_text: str) -> None:
+        if os.getenv("RTK_CAPTURE_FIXTURES") != "1":
+            return
+        fixtures_dir = Path("tests/fixtures/responses")
+        fixtures_dir.mkdir(parents=True, exist_ok=True)
+        ts = int(time.time())
+        dest = fixtures_dir / f"{rpc_id}_{ts}.txt"
+        dest.write_text(response_text, encoding="utf-8")
+        logger.info(f"[fixture] saved {dest}")
+
     async def create_notebook(self, title: str) -> str:
         """Creates a new notebook with the given title and returns its ID."""
         rpc_id = "CCqFvf"
@@ -76,6 +89,7 @@ class NotebookLMClient:
 
         logger.info(f"Creating notebook: '{title}'")
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to create notebook. HTTP {response.status_code}")
 
@@ -103,6 +117,7 @@ class NotebookLMClient:
 
         logger.info(f"Adding source URL '{source_url}' to notebook {notebook_id}")
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to add source. HTTP {response.status_code}")
 
@@ -137,6 +152,7 @@ class NotebookLMClient:
 
         logger.info(f"Sending query to notebook {notebook_id}: '{question}'")
         response = await self.client.post(query_url, content=body)
+        self._save_fixture("GenerateFreeFormStreamed", response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to query notebook. HTTP {response.status_code}")
 
@@ -224,6 +240,7 @@ class NotebookLMClient:
         
         logger.info(f"Starting {mode_lower} research on notebook {notebook_id} with query: '{query}'")
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to start research. HTTP {response.status_code}")
             
@@ -249,6 +266,7 @@ class NotebookLMClient:
         body = self._build_batch_body(rpc_id, params)
         
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to poll research. HTTP {response.status_code}")
             
@@ -355,6 +373,7 @@ class NotebookLMClient:
         
         logger.info(f"Importing {len(source_array)} sources for task {task_id} in notebook {notebook_id}")
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to import sources. HTTP {response.status_code}")
             
@@ -378,6 +397,7 @@ class NotebookLMClient:
         body = self._build_batch_body(rpc_id, params)
         
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to get notebook. HTTP {response.status_code}")
             
@@ -508,6 +528,7 @@ class NotebookLMClient:
         
         logger.info(f"Generating studio artifact '{type_lower}' for notebook {notebook_id}")
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to generate artifact. HTTP {response.status_code}")
             
@@ -528,6 +549,7 @@ class NotebookLMClient:
         body = self._build_batch_body(rpc_id, params)
         
         response = await self.client.post(url, content=body)
+        self._save_fixture(rpc_id, response.text)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to list artifacts. HTTP {response.status_code}")
             
