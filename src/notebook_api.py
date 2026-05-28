@@ -100,7 +100,19 @@ class NotebookLMClient:
         logger.info(f"[fixture] saved {dest}")
 
     async def create_notebook(self, title: str) -> str:
-        """Creates a new notebook with the given title and returns its ID."""
+        """Creates a new notebook and returns its UUID.
+
+        Args:
+            title: Display name for the notebook.
+
+        Returns:
+            UUID string of the created notebook (e.g. "2ac5476a-...").
+
+        Raises:
+            RuntimeError: HTTP request to Google failed.
+            RpcStructureError: Response structure was unexpected (Google API change?).
+            CaptchaRequiredError: Google requires CAPTCHA. Run authenticate().
+        """
         rpc_id = RpcId.CREATE_NOTEBOOK
         params = [title, None, None, [2], [1, None, None, None, None, None, None, None, None, None, [1]]]
         url = self._build_batch_url(rpc_id)
@@ -121,7 +133,20 @@ class NotebookLMClient:
         raise RpcStructureError(f"Unexpected response structure when creating notebook: {response.text[:500]}")
 
     async def add_source_url(self, notebook_id: str, source_url: str) -> str:
-        """Adds a web/git repository URL to the specified notebook."""
+        """Add a web URL or GitHub repository as a source in a notebook.
+
+        Args:
+            notebook_id: UUID of the target notebook.
+            source_url: URL to add (http/https/git@). YouTube URLs are handled
+                with a different payload structure automatically.
+
+        Returns:
+            source_id string assigned by Google (or "unknown_source_id" if
+            the response structure was unexpected — source may still have been added).
+
+        Raises:
+            RuntimeError: HTTP request failed.
+        """
         rpc_id = RpcId.ADD_SOURCE
         # Check if youtube url or general web
         is_youtube = "youtube.com" in source_url.lower() or "youtu.be" in source_url.lower()
@@ -153,7 +178,21 @@ class NotebookLMClient:
         return "unknown_source_id"
 
     async def query(self, notebook_id: str, question: str, conversation_id: Optional[str] = None) -> Tuple[str, str]:
-        """Queries the notebook and returns the text response and a stream/session ID."""
+        """Ask a question to the notebook and return the answer + conversation ID.
+
+        Args:
+            notebook_id: UUID of the target notebook.
+            question: Free-form question (min 3 chars).
+            conversation_id: Reuse a previous session ID to maintain context. None = new session.
+
+        Returns:
+            Tuple (answer_text, conversation_id). Pass the second value back on follow-up
+            questions to preserve conversational context.
+
+        Raises:
+            RuntimeError: HTTP request failed.
+            CaptchaRequiredError: Google requires CAPTCHA.
+        """
         req_id = self._get_next_req_id()
         url_params = {
             "bl": self.build_label,
@@ -239,7 +278,20 @@ class NotebookLMClient:
         return answer, server_conv_id
 
     async def start_research(self, notebook_id: str, query: str, mode: str = "deep") -> dict:
-        """Starts a web research session (fast: Ljjv0c | deep: QA9ei)."""
+        """Start a web research session and return the task ID.
+
+        Args:
+            notebook_id: UUID of the target notebook.
+            query: Research topic or question.
+            mode: "fast" (quick results) or "deep" (comprehensive, takes longer).
+
+        Returns:
+            Dict with keys: task_id (str), report_id (str|None), status ("in_progress").
+
+        Raises:
+            ValueError: mode is not "fast" or "deep".
+            RpcStructureError: Unexpected response from Google.
+        """
         mode_lower = mode.lower()
         if mode_lower not in ("fast", "deep"):
             raise ValueError("mode must be either 'fast' or 'deep'")
@@ -278,7 +330,16 @@ class NotebookLMClient:
         raise RpcStructureError(f"Unexpected response when starting research: {response.text[:500]}")
 
     async def poll_research(self, notebook_id: str, task_id: str) -> dict:
-        """Polls the status of research tasks in the notebook."""
+        """Poll the status of a running research task.
+
+        Args:
+            notebook_id: UUID of the notebook containing the research.
+            task_id: Task ID returned by start_research().
+
+        Returns:
+            Dict with keys: task_id, status ("in_progress"|"completed"|"failed"|"not_found"),
+            query (str), sources (list of {url, title, report_markdown?}), report (str).
+        """
         rpc_id = RpcId.POLL_RESEARCH
         params = [None, None, notebook_id]
         url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
@@ -367,7 +428,27 @@ class NotebookLMClient:
         return {"status": "not_found", "sources": []}
 
     async def import_research_sources(self, notebook_id: str, task_id: str, sources: list) -> list:
-        """Imports research sources (web links or reports) into the notebook."""
+        """Import a list of research sources into a notebook as permanent sources.
+
+        Args:
+            notebook_id: UUID of the target notebook.
+            task_id: Research task ID returned by start_research / poll_research.
+            sources: List of source dicts. Each dict should have:
+                - url (str): Web URL for web-type sources.
+                - title (str): Display title.
+                - report_markdown (str, optional): Markdown content for report-type sources.
+
+        Returns:
+            List of imported source dicts with keys: id (str), title (str).
+            Empty list if nothing was imported.
+
+        Raises:
+            RuntimeError: HTTP request failed.
+
+        Note:
+            This operation is NOT idempotent — calling twice may create duplicate sources.
+            Do not apply retry logic to this method.
+        """
         rpc_id = RpcId.IMPORT_RESEARCH_SOURCES
         source_array = []
         
@@ -405,7 +486,18 @@ class NotebookLMClient:
         return imported
 
     async def get_source_ids(self, notebook_id: str) -> list:
-        """Gets all source IDs currently linked to a notebook."""
+        """Get the list of source IDs currently linked to a notebook.
+
+        Args:
+            notebook_id: UUID of the target notebook.
+
+        Returns:
+            List of source ID strings. Empty list if the notebook has no sources
+            or the response structure was unexpected.
+
+        Raises:
+            RuntimeError: HTTP request failed.
+        """
         rpc_id = RpcId.GET_NOTEBOOK
         params = [notebook_id, None, [2], None, 0]
         url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
@@ -432,7 +524,24 @@ class NotebookLMClient:
         return source_ids
 
     async def generate_studio_artifact(self, notebook_id: str, source_ids: list, artifact_type: str, custom_prompt: str = None) -> str:
-        """Generates a Studio artifact (Study Guide, Briefing Doc, Quiz, Slide Deck, etc.)"""
+        """Trigger generation of a Studio artifact and return its artifact ID.
+
+        Args:
+            notebook_id: UUID of the target notebook.
+            source_ids: List of source ID strings to include (from get_source_ids).
+            artifact_type: One of: study_guide, briefing_doc, blog_post, quiz,
+                slide_deck, data_table, custom.
+            custom_prompt: Optional extra instructions appended to the default prompt
+                (for study_guide/briefing_doc/blog_post) or used as the full prompt
+                (for quiz/slide_deck/data_table/custom).
+
+        Returns:
+            artifact_id string to pass to poll_studio_artifact.
+
+        Raises:
+            RuntimeError: HTTP request failed.
+            RpcStructureError: Google's response did not contain a usable artifact ID.
+        """
         rpc_id = RpcId.CREATE_ARTIFACT
         
         # Nest source IDs: double = [[id, ...]], triple = [[[id, ...]]]
@@ -557,7 +666,25 @@ class NotebookLMClient:
         raise RpcStructureError(f"Unexpected response during artifact generation: {response.text[:500]}")
 
     async def poll_studio_artifact(self, notebook_id: str, artifact_id: str) -> dict:
-        """Polls the status and fetches the content of a generated artifact."""
+        """Poll the status and retrieve the content of a Studio artifact.
+
+        Args:
+            notebook_id: UUID of the notebook that owns the artifact.
+            artifact_id: Artifact ID returned by generate_studio_artifact.
+
+        Returns:
+            Dict with keys:
+                - artifact_id (str): Same as input.
+                - title (str): Artifact display name.
+                - type_code (int): Internal type code (2=report, 4=quiz, 8=slides, 9=table).
+                - status (str): "in_progress", "completed", or "failed".
+                - content (str): Markdown content — only populated when status="completed"
+                    and type_code=2 (text-based artifacts).
+            Returns {"status": "not_found"} if the artifact ID isn't in the list.
+
+        Raises:
+            RuntimeError: HTTP request failed.
+        """
         rpc_id = RpcId.LIST_ARTIFACTS
         params = [[2], notebook_id]
         url = self._build_batch_url(rpc_id, path=f"/notebook/{notebook_id}")
