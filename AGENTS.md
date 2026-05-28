@@ -1,4 +1,7 @@
-# NotebookLM CLI V2 — Instruções para Agentes de IA
+# NotebookLM MCP Desktop v3 — Instruções para Agentes de IA
+
+> **ANTES DE QUALQUER TRABALHO:** Ler `COORDINATION.md` e `.handoff.md` na raiz do projeto.
+> **ANTES DE TOCAR EM** `google_auth.py`, `notebook_api.py`, `server.py`: Ler `SACRED.md`.
 
 ## O que é este projeto
 
@@ -68,3 +71,40 @@ Ao inicializar ou abrir este diretório de trabalho:
 - **Proatividade de Deep Research**: Se o usuário te fizer perguntas sobre o código ou sobre bibliotecas externas que necessitam de buscas web atualizadas, e você perceber que o NotebookLM atual não possui fontes suficientes sobre esse assunto, ofereça-se proativamente para rodar uma pesquisa profunda (Deep Research) e salvá-la no notebook para uso futuro.
 - **Uso do Estúdio**: Sempre que o usuário solicitar resumos detalhados, questionários, mapas mentais ou guias de estudo do repositório, utilize a ferramenta `generate_studio_artifact` + `poll_studio_artifact` para gerar e trazer a versão estruturada do Estúdio do NotebookLM, apresentando o resultado final de forma muito polida no chat.
 - **Metáforas Amigáveis**: NUNCA exponha termos técnicos como "RPC", "batchexecute" ou "payload" nas mensagens do chat. Use termos humanos e amigáveis como "Pesquisa profunda na web", "Processando fontes", "Gerando Guia de Estudo no Estúdio", etc.
+
+---
+
+## Coordenação Claude Code ↔ Antigravity IDE
+
+### Para o Antigravity IDE
+
+Você está editando este projeto? Siga estas regras:
+
+1. **Confirme que está no diretório correto**: `D:\projetos D\notebooklmcpdesktop\` (branch `main`)
+2. **Leia `.handoff.md`** para saber o estado atual do projeto
+3. `git pull origin main` antes de começar qualquer trabalho
+4. Ao terminar: `git add -A && git commit && git push origin main`
+5. Atualizar `.handoff.md` com o que foi feito
+
+### NÃO MODIFICAR (ver SACRED.md)
+
+- `src/google_auth.py` — headers, User-Agent, regexes de CSRF/build_label
+- Padrão de re-auth em `src/server.py:27-47`
+- RPC IDs e URLs de endpoint em `src/notebook_api.py`
+- Qualquer mudança nestes requer teste A/B com fixture Google real
+
+### Tools MCP disponíveis (v3)
+
+9 tools existentes + 2 novos na v3:
+- `provision_lifecycle`, `deep_query`, `authenticate`
+- `start_research`, `poll_research`, `import_research_sources`
+- `get_notebook_sources`, `generate_studio_artifact`, `poll_studio_artifact`
+- `health_check` *(novo v3)* — verifica autenticação e conectividade
+- `usage_stats` *(novo v3)* — estatísticas de uso local
+
+### Merge para main
+
+- **Claude Code** trabalha em worktree separado (`notebooklmcpdesktop-claude/`, branch `claude/upgrade-v3`)
+- Mudanças do Claude chegam via PR — nunca push direto em `main`
+- **Antigravity** commita diretamente em `main`
+- Nenhum dos dois deve tocar no diretório de trabalho do outro
