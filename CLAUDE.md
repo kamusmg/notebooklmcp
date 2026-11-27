@@ -1,81 +1,67 @@
-# NotebookLM CLI — Instruções para o Claude
+# NotebookLM MCP Desktop — Instruções para Claude Code
 
 ## O que é este projeto
 
-CLI para consultar o Google NotebookLM direto do terminal, usando o pacote `notebooklm-mcp` via JSONRPC.
-Comandos principais: `note "pergunta"` e `lm "pergunta"`.
+Servidor MCP em Python para consultar o Google NotebookLM via RPC interno (`batchexecute`).
+Expõe 9 tools MCP via stdio para uso direto de agentes de IA.
 
-## Como instalar (quando o usuário pedir)
+**NÃO confundir com** `C:\Users\samue\.notebooklm-mcp\` (projeto Node.js separado com comandos `note`/`lm`).
 
-Execute os passos abaixo em ordem:
+## Arquivos críticos
 
-### 1. Rodar o instalador
+- `src/server.py` — 9 tools MCP expostos via FastMCP
+- `src/notebook_api.py` — NotebookLMClient (RPC batchexecute)
+- `src/google_auth.py` — Autenticação + fingerprint anti-bot (SAGRADO)
+- `src/browser_auth.py` — Extração de cookies via Chrome CDP
 
-**Windows:**
+## Como rodar
+
 ```powershell
-.\install.ps1
+cd "D:\projetos D\notebooklmcpdesktop-claude"
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python -m src.server
 ```
 
-**macOS / Linux:**
-```bash
-chmod +x install.sh && ./install.sh
+## Autenticação (requer interação humana)
+
+```python
+# Via MCP tool:
+# authenticate()
+
+# Ou diretamente:
+python -m src.browser_auth
 ```
 
-### 2. Login com Google (requer interação humana)
+Avise o usuário: "Uma janela do Chrome vai abrir — não feche, aguarde extrair os cookies."
+Após extrair, cookies ficam no `.env` local.
 
-```bash
-npx notebooklm-mcp setup_auth
+## Regras INVIOLÁVEIS
+
+1. **Ler SACRED.md antes de tocar em google_auth.py, notebook_api.py ou server.py**
+2. **Ler COORDINATION.md antes de qualquer sessão de trabalho**
+3. **Claude trabalha SOMENTE no worktree `notebooklmcpdesktop-claude/`** (branch `claude/upgrade-v3`)
+4. **NUNCA editar** `D:\projetos D\notebooklmcpdesktop\` (território do Antigravity em `main`)
+5. **NUNCA commitar** `.env`, `auth.json`, `.notebook_id`
+6. **NUNCA push direto em `main`** — sempre via PR com aprovação do usuário
+7. **Atualizar `.handoff.md` ao terminar** qualquer sessão
+
+## Fingerprint anti-bot (resumo)
+
+Os headers, User-Agent e padrão de re-auth em `src/google_auth.py` e `src/server.py` são o que
+permite contornar a detecção de bot do Google. Ver `SACRED.md` para lista completa.
+**Não modificar sem teste A/B com fixture real.**
+
+## Rodar testes
+
+```powershell
+pytest tests/ -v                         # Unit tests (Fase 3+)
+python test_research_run.py              # Integração (requer cookies reais)
 ```
 
-Avise o usuário: *"Uma janela do Chrome vai abrir — faça login na sua conta Google e entre em notebooklm.google.com. Depois feche a janela e me avise."*
+## GitHub
 
-Aguarde a confirmação antes de continuar.
-
-### 3. Cadastrar o primeiro notebook
-
-Peça ao usuário a URL do notebook no formato:
-`https://notebooklm.google.com/notebook/...`
-
-Depois rode:
-```bash
-note add <url> "Nome do Projeto"
-```
-
-### 4. Testar
-
-```bash
-note "Como funciona este projeto?"
-```
-
-Se a resposta vier corretamente, a instalação está completa.
-
----
-
-## Comandos disponíveis
-
-| Comando | Descrição |
-|---------|-----------|
-| `note "pergunta"` | Consulta o notebook ativo |
-| `note add <url> [nome]` | Cadastra um notebook |
-| `note list` | Lista notebooks cadastrados |
-| `note use <id>` | Troca o notebook ativo |
-| `note remove <id>` | Remove um notebook |
-| `note info` | Status e estatísticas |
-
-## Se o login expirar
-
-```bash
-npx notebooklm-mcp setup_auth
-```
-
-## Arquivos importantes
-
-- `ask_notebook.js` — script principal (não editar sem necessidade)
-- `install.ps1` — instalador Windows
-- `install.sh` — instalador macOS/Linux
-- `auth.json` — cookies do Google (gerado automaticamente, nunca commitado)
-
-## O que NÃO fazer
-
-- Nunca commitar `auth.json` — contém cookies de sessão do Google
-- Nunca hardcodar caminhos com username (`C:\Users\fulano\...`) — usar `os.homedir()`
+Repo: `github.com/kamusmg/notebooklmcp` (público)
+PR target: `main`
+Branch de trabalho: `claude/upgrade-v3`

@@ -10,6 +10,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.google_auth import get_google_cookies, format_cookie_header, refresh_at_and_bl
 from src.notebook_api import NotebookLMClient
+from src.exceptions import AuthExpiredError, CaptchaRequiredError, NotebookLMError
+from src.telemetry import tracker
+from src.validators import validate_notebook_id, validate_url, validate_question, validate_mode, validate_artifact_type
+from src.config import settings
 
 # Configure logging to stderr to prevent stdout corruption in JSON-RPC stdio transport
 logging.basicConfig(
@@ -86,23 +90,29 @@ async def provision_lifecycle(project_name: str, github_repo_url: str) -> Dict[s
         }
 
 @mcp.tool()
-async def deep_query(notebook_id: str, question: str) -> Dict[str, Any]:
+async def deep_query(question: str, notebook_id: str = "") -> Dict[str, Any]:
     """
     Sends a query directly to the chat interface of the specified NotebookLM notebook,
     returning the grounded synthesized response. Consumes zero local token quota.
 
     Parameters:
-    - notebook_id: The ID of the NotebookLM notebook.
     - question: The query/prompt containing engineering questions or code requests.
+    - notebook_id: The ID of the NotebookLM notebook. If omitted, uses DEFAULT_NOTEBOOK_ID from .env.
     """
     try:
+        if not notebook_id:
+            notebook_id = settings.default_notebook_id
+            if not notebook_id:
+                raise ValueError("notebook_id is empty and DEFAULT_NOTEBOOK_ID is not set in .env")
+        validate_notebook_id(notebook_id)
+        validate_question(question)
         client = await _get_authenticated_client()
-        
+
         # Query the notebook
         answer, _ = await client.query(notebook_id, question)
-        
+        tracker.track("deep_query")
         await client.close()
-        
+
         return {
             "status": "success",
             "answer": answer
@@ -153,8 +163,12 @@ async def start_research(notebook_id: str, query: str, mode: str = "deep") -> Di
     - mode: The research depth ('fast' for quick results, 'deep' for detailed analysis).
     """
     try:
+        validate_notebook_id(notebook_id)
+        validate_question(query)
+        validate_mode(mode)
         client = await _get_authenticated_client()
         result = await client.start_research(notebook_id, query, mode)
+        tracker.track(f"start_research_{mode.lower()}")
         await client.close()
         return {
             "status": "success",
@@ -250,8 +264,10 @@ async def generate_studio_artifact(notebook_id: str, artifact_type: str, custom_
     - custom_prompt: Custom generation instructions or custom report template.
     """
     try:
+        validate_notebook_id(notebook_id)
+        validate_artifact_type(artifact_type)
         client = await _get_authenticated_client()
-        
+
         # 1. Fetch active source IDs from the notebook
         source_ids = await client.get_source_ids(notebook_id)
         if not source_ids:
@@ -301,6 +317,48 @@ async def poll_studio_artifact(notebook_id: str, artifact_id: str) -> Dict[str, 
             "status": "error",
             "message": str(e)
         }
+
+@mcp.tool()
+async def health_check() -> Dict[str, Any]:
+    """
+    Verifies Google authentication status, cookie presence, and connectivity to NotebookLM.
+    Use this tool first to diagnose auth issues before running other tools.
+    """
+    try:
+        from src.google_auth import create_http_client
+        cookies = get_google_cookies()
+        if not cookies or len(cookies) < 2:
+            return {
+                "status": "error",
+                "authenticated": False,
+                "message": "Google cookies missing or incomplete. Run authenticate() to set them up."
+            }
+        cookie_header = format_cookie_header(cookies)
+        async with create_http_client(cookie_header) as client:
+            csrf_token, build_label = await refresh_at_and_bl(client)
+            return {
+                "status": "ok",
+                "authenticated": True,
+                "build_label": build_label,
+                "cookies_present": list(cookies.keys()),
+            }
+    except AuthExpiredError:
+        return {"status": "error", "authenticated": False, "message": "Google cookies expired. Run authenticate()."}
+    except CaptchaRequiredError:
+        return {"status": "error", "authenticated": False, "message": "Google requires CAPTCHA. Run authenticate()."}
+    except Exception as e:
+        return {"status": "error", "authenticated": False, "message": str(e)}
+
+
+@mcp.tool()
+async def usage_stats() -> Dict[str, Any]:
+    """
+    Returns local usage statistics (privacy-friendly, nothing sent externally).
+    Data is stored in ~/.notebooklmcp/telemetry.json.
+    """
+    from src.telemetry import tracker
+    return {"status": "success", "data": tracker.report()}
+
 
 if __name__ == "__main__":
     # Default behavior: run stdio transport for MCP integration
